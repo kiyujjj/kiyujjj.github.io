@@ -44,7 +44,7 @@
 	$(function() {
 		$('#datetimepicker').datetimepicker({
 			beforeShowDay:function(date){
-				var d = date.getFullYear()+"/"+( '0' + (date.getMonth()+1) ).slice( -2 )+"/"+date.getDate();	// 月を0パディング
+				var d = date.getFullYear()+"/"+( '0' + (date.getMonth()+1) ).slice( -2 )+"/"+( '0' + (date.getDate()+1) ).slice( -2 );	// 月日を0パディング
 				if(isHoliday(d))
 					return ["xdsoft_highlighted_mint"];		//背景のスタイルを返す
 			}
