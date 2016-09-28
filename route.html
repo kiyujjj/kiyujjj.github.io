@@ -61,11 +61,14 @@
 
 	// 出発日時
 	var startDateTime = moment();
-	function datetime_change() {
+	function datetime_update() {
 		var str = document.getElementById('datetimepicker').value;
 		if(str === "")
 			return;
 		startDateTime = moment(str, "YYYY/MM/DD HH:mm");
+	}
+
+	function datetime_change() {
 		reflesh_log(directionsDisplay.getDirections());
 	}
 
@@ -132,6 +135,7 @@
 		});
 	}
 	function reflesh_log(result) {
+		datetime_update();
 		removeMarker();
 		removeMarkers();
 		var route_log = document.getElementById('route_log');
