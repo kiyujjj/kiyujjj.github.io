@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>route on gmap</title>
+<meta http-equiv="Content-Type" content="text/html; charset =UTF-8">
+<link rel="shortcut icon" href="https://dl.dropbox.com/u/11708403/favicon.ico">
+
+<style type="text/css">
+	html, body   { width: 100%; height: 100%; overflow-y:hidden; overflow-x:hidden; margin: 0; padding: 0; }
+	#map_canvas  { width: 100%; height: 100%; float: right; z-index:0; position:absolute; }
+	#route_log   { width:200px; height: 100%; float: left;  z-index:1; position:absolute; font-size: 80%;
+				   background-color: rgba( 0, 0, 0, 0.55 ); color: #cccccc;
+				   overflow:auto;
+				 }
+	#route_log a		 { color: #cccccc; }
+	#route_log a:hover	 { color: #ff0000; }
+	#datetimepicker		 { left: 210px; float: left; z-index:1; position: absolute; }
+</style>
+<link rel="stylesheet" href="https://dl.dropbox.com/u/11708403/jquery.datetimepicker.css" />
+
+<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD_dXBVtt0wwx8x7WUXI52nlFpnbX_uQcs"></script>
+<script type="text/javascript" src="https://dl.dropbox.com/u/11708403/geotool.js"></script>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script src="https://dl.dropbox.com/u/11708403/jquery.datetimepicker.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.10.6/moment.min.js"></script>
+
+<script type="text/javascript">
+
+	var startDateTime = moment();	// 出発日時
+
+	// 祝日リスト
+	var holidays = [];				// date: YYYY/MM/DD
+	var holidays_summary = [];		// summary
+
+	$(function() {
+		$.getJSON('https://dl.dropbox.com/u/11708403/holiday.json', function(data){
+			$.each(res, function (index, item) {
+				holidays.push(item.date);
+				holidays_summary.push(item.summary);
+			});
+		});
+	});
+
+	$(function() {
+		$('#datetimepicker').datetimepicker({
+			beforeShowDay:function(date){
+				var d = date.getFullYear()+"/"+( '0' + (date.getMonth()+1) ).slice( -2 )+"/"+date.getDate();	// 月を0パディング
+				if(isHoliday(d))
+					return ["xdsoft_highlighted_mint"];		//背景のスタイルを返す
+			}
+		});
+	});
+
+	// 祝日チェック data_str = YYYY/0M/DD
+	function isHoliday(date_str) {
+		for(var i=0; i<holidays.length; i++){
+			if (holidays[i] == date_str )
+				return true;
+		}
+	}
+
+	function datetime_change() {
+		var str = document.getElementById('datetimepicker').value;
+		if(str === "")
+			return;
+		startDateTime = moment(str, "YYYY/MM/DD HH:mm");
+		reflesh_log(directionsDisplay.getDirections());
+	}
+	// maps_ ==================================================================================================================================
+
+	rendererOptions = {
+		draggable: true,
+		preserveViewport:false
+	};
+	var directionsDisplay = new google.maps.DirectionsRenderer(rendererOptions);
+	var directionsService = new google.maps.DirectionsService();
+
+	var map;
+	var marker;										// route_logの座標へ移動後に表示するマーカー
+	var marker_list = new google.maps.MVCArray();	// 料金所と思われる箇所にマーカー
+
+	// init_ ==================================================================================================================================
+
+	function initialize() {
+
+		document.getElementById('datetimepicker').value = startDateTime.format("YYYY/MM/DD HH:mm");
+
+		var latlng = new google.maps.LatLng(36.37,136.71);
+		var myOptions = {
+			zoom: 5,
+			center: latlng,
+			mapTypeId: google.maps.MapTypeId.ROADMAP,
+			mapTypeControl: true,
+			mapTypeControlOptions: {
+				style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+				position: google.maps.ControlPosition.TOP_RIGHT
+			}
+		};
+		map = new google.maps.Map(document.getElementById("map_canvas"), myOptions);
+		directionsDisplay.setMap(map);
+
+		calcRoute();
+
+		google.maps.event.addListener(directionsDisplay, 'directions_changed', function(){
+			reflesh_log(directionsDisplay.getDirections());
+		});
+	}
+
+	// calcRoute ==================================================================================================================================
+	function calcRoute() {
+		var request = {
+			origin: "東京",
+			destination: "大阪",
+			travelMode: google.maps.DirectionsTravelMode.DRIVING,
+			unitSystem: google.maps.DirectionsUnitSystem.METRIC,
+			optimizeWaypoints: true,
+			avoidHighways: false,
+			avoidTolls: false
+		};
+		directionsService.route(request, function(response,status){
+			if (status == google.maps.DirectionsStatus.OK){
+				directionsDisplay.setDirections(response);
+			}
+		});
+	}
+	function removeMarkers() {
+		marker_list.forEach(function(marker_, idx) {
+			marker_.setMap(null);
+		});
+	}
+	function reflesh_log(result) {
+		removeMarker();
+		removeMarkers();
+		var route_log = document.getElementById('route_log');
+		route_log.innerHTML = "";
+
+		var distance = 0;	// 出発地からの距離（ｍ）
+		var duration = 0;	// 出発地からの時刻（秒）
+
+		// 出発
+		{
+			var lng = result.routes[0].legs[0].start_location.lng();
+			var lat = result.routes[0].legs[0].start_location.lat();
+			var str_lng = floatFormat(lng, 4);
+			var str_lat = floatFormat(lat, 4);
+			route_log.innerHTML += "<a href=\"#\" onMouseOver=\"javascript:reflesh_marker("+lat+","+lng+")\">[出発] "+str_lng+","+str_lat+"</a><br />";
+			route_log.innerHTML += startDateTime.add(duration, 'seconds').format('YYYY/MM/DD(ddd) HH:mm')+" 出発<br /><br />";
+		}
+
+		// steps
+		for(var i in result.routes[0].legs[0].steps)
+		{
+			{
+				distance += result.routes[0].legs[0].steps[i].distance.value;	// 出発地からの距離を加算
+				duration += result.routes[0].legs[0].steps[i].duration.value;	// 出発地からの時刻を加算
+
+				var lng = result.routes[0].legs[0].steps[i].lat_lngs[0].lng();
+				var lat = result.routes[0].legs[0].steps[i].lat_lngs[0].lat();
+				var str_lng = floatFormat(lng, 4);
+				var str_lat = floatFormat(lat, 4);
+				var instructions = result.routes[0].legs[0].steps[i].instructions;	// 探索結果案内ログ(ここに文字列「料金所」が含まれるか否か)
+				if ( -1 != instructions.indexOf('料金所'))
+				{
+					route_log.innerHTML += "<a href=\"#\" onMouseOver=\"javascript:reflesh_marker("+lat+","+lng+")\">["+i+"] "+str_lng+","+str_lat+"</a><br />";
+					route_log.innerHTML += startDateTime.add(duration, 'seconds').format('YYYY/MM/DD(ddd) HH:mm')+" 通過<br />";
+					route_log.innerHTML += "料金:○○円 割引:●●円<br />";
+					route_log.innerHTML += instructions+"<br />";
+
+					var str_result = instructions.match(/<b>([^<]*料金所?)<\/b>/);	// [0]<b>●●料金所</b>, [1]●●料金所	※[1]を使用する
+					if(str_result)
+					{
+						idbuf = 'https://chart.googleapis.com/chart?chst=d_bubble_icon_texts_big&chld=bank-yen|edge_bc|F0E68C|0000FF|'+str_result[1]+'|'+startDateTime.add(duration, 'seconds').format('YYYY/MM/DD(ddd) HH:mm')+' 通過|料金:○○円 割引:●●円';
+					}else{
+						idbuf = 'https://chart.googleapis.com/chart?chst=d_bubble_icon_texts_big&chld=bank-yen|edge_bc|F0E68C|0000FF|[文字列取得不可]';
+					}
+					var marker = new google.maps.Marker({
+						position: result.routes[0].legs[0].steps[i].lat_lngs[0],
+						icon: new google.maps.MarkerImage(idbuf),
+						map: map
+					});
+					marker_list.push(marker);
+				}
+			}
+		}
+
+		// 到着
+		{
+			var lng = result.routes[0].legs[0].end_location.lng();
+			var lat = result.routes[0].legs[0].end_location.lat();
+			var str_lng = floatFormat(lng, 4);
+			var str_lat = floatFormat(lat, 4);
+			route_log.innerHTML += "<a href=\"#\" onMouseOver=\"javascript:reflesh_marker("+lat+","+lng+")\">[到着] "+str_lng+","+str_lat+"</a><br />";
+			route_log.innerHTML += startDateTime.add(duration, 'seconds').format('YYYY/MM/DD(ddd) HH:mm')+" 到着<br /><br />";
+			route_log.innerHTML += "合計料金:○○円<br />合計割引料金:●●円<br />";
+		}
+
+	}
+	function removeMarker() {
+		if(marker)
+			marker.setMap(null);
+	}
+	function reflesh_marker(lat, lng) {
+		removeMarker();
+		var latlng = new google.maps.LatLng(lat,lng);
+		marker = new google.maps.Marker({
+		  position: latlng, 
+		  map: map
+		});
+		map.setCenter(latlng);
+	}
+
+	// Util ==================================================================================================================================
+
+	// 小数点n位までを残す関数 number=対象の数値 n=残したい小数点以下の桁数
+	function floatFormat( number, n ) {
+		var _pow = Math.pow( 10 , n ) ;
+		return Math.round( number * _pow ) / _pow ;	// round(四捨五入) floor(切り捨て) ceil(切り上げ)
+	}
+	// 時分秒変換
+	function toHms(t) {
+		var hms = "";
+		var h = t / 3600 | 0;
+		var m = t % 3600 / 60 | 0;
+		var s = t % 60;
+
+		if (h != 0) {
+			hms = h + "時間" + padZero(m) + "分" + padZero(s) + "秒";
+		} else if (m != 0) {
+			hms = m + "分" + padZero(s) + "秒";
+		} else {
+			hms = s + "秒";
+		}
+
+		return hms;
+
+		function padZero(v) {
+			if (v < 10) {
+				return "0" + v;
+			} else {
+				return v;
+			}
+		}
+	}
+</script>
+</head>
+<body onload="initialize()">
+
+<div id="map_canvas"></div>
+<div id="route_log"></div>
+
+<input id="datetimepicker" type="text" onChange="javascript:datetime_change()">
+
+</body>
+</html>
