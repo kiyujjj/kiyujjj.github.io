@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
 <title>route on gmap</title>
 <meta http-equiv="Content-Type" content="text/html; charset =UTF-8">
@@ -28,18 +28,16 @@
 
 <script type="text/javascript">
 
-	var startDateTime = moment();	// 出発日時
-
 	// 祝日リスト
 	var holidays = [];				// date: YYYY/MM/DD
 	var holidays_summary = [];		// summary
 
 	$(function() {
-		$.getJSON('https://dl.dropbox.com/u/11708403/holiday.json', function(data){
-			$.each(res, function (index, item) {
-				holidays.push(item.date);
-				holidays_summary.push(item.summary);
-			});
+		$.getJSON("https://dl.dropbox.com/u/11708403/holiday.json", function(data){
+			for(var i in data){
+				holidays.push(data[i].date);
+				holidays_summary.push(data[i].summary);
+			}
 		});
 	});
 
@@ -61,6 +59,8 @@
 		}
 	}
 
+	// 出発日時
+	var startDateTime = moment();
 	function datetime_change() {
 		var str = document.getElementById('datetimepicker').value;
 		if(str === "")
@@ -68,6 +68,7 @@
 		startDateTime = moment(str, "YYYY/MM/DD HH:mm");
 		reflesh_log(directionsDisplay.getDirections());
 	}
+
 	// maps_ ==================================================================================================================================
 
 	rendererOptions = {
