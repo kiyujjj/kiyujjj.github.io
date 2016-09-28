@@ -1,0 +1,1924 @@
+<html>
+<head>
+<title>mesh on gmap Tokyo Datum for FireFox4</title>
+<link rel="shortcut icon" href="https://dl.dropbox.com/u/11708403/favicon.ico">
+<style type="text/css">
+	td {font-size: 80%}
+	.buttonMesh   {width:35px;}
+	.buttonMapple {width:50px;}
+	.buttonPND    {width:90px;}
+</style>
+<meta http-equiv="Content-Type" content="text/html; charset =UTF-8">
+<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+<script type="text/javascript" src="https://maps.google.com/maps/api/js?libraries=geometry&sensor=false"></script>
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
+<script type="text/javascript" src="https://dl.dropbox.com/u/11708403/geotool.js"></script>
+<script type="text/javascript">
+
+	// trim:[string.replace(/^\s+|\s+$/g, "");](http://d.hatena.ne.jp/fumokmm/20060714/1152856728)
+
+	var map;
+	var geocoder;
+
+	var LL10degreeArray = [];	// 世界測地系　10度ごとの経緯線
+
+	var AreaArray = [];			// エリア矩形
+
+	var hashLevel = { 	'MeshArea1': 8, 'MeshArea2': 12, 'MeshArea3': 17, 'MeshAreaG1': 8, 'MeshAreaG2': 12, 'MeshAreaG3': 17, 'MappleArea100': 6, 'MappleArea20': 8, 'MappleArea5': 10, 'MappleArea25': 12, 'MappleArea1': 14, 'PNDArea10': 4, 'PNDArea8': 6, 'PNDArea6': 8, 'PNDArea4': 10, 'PNDArea2': 12, 'PNDArea0': 14, 'PNDAream2': 16 };
+
+	var hashColor = { 'Mesh': '#0000ff', 'MeshG': '#ff00ff', 'Mapple': '#00ff00', 'PND': '#ff0000', 'BlockSet': '#00ffff' };
+
+	// センターマーク http://matsup.blogspot.com/2011/03/gpsgoogle-maps-api-v3_30.html
+	var cmLayer = new google.maps.KmlLayer('https://dl.dropbox.com/u/11708403/centerMark.kml', {preserveViewport:true});
+
+	// 収容範囲
+	var hashKWArea = { 'L':439200000 , 'B':52800000 , 'R':554400000 , 'T':206400000 };
+	var hashKWBlockSet = { 'V':8, 'H':4 };						// 緯度方向分割数、経度方向分割数
+	var hashKWBlock = { 'L2':4, 'L1':8, 'L0':16, 'Lf':16 };		// ブロック分割数(一辺)
+	var hashKWParcel = { 'L2':4, 'L1':8, 'L0':16, 'Lf':32 };	// パーセル分割数(一辺)
+
+	// init_ ============================================================================================================================================
+
+	function initialize() {
+		geocoder = new google.maps.Geocoder();
+
+		var latlng = new google.maps.LatLng(36.37,136.71);
+		var myOptions = {
+			zoom: 5,
+			center: latlng,
+			mapTypeId: google.maps.MapTypeId.ROADMAP,
+			mapTypeControl: true,
+			mapTypeControlOptions: {
+				style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+				position: google.maps.ControlPosition.TOP_RIGHT
+			}
+		};
+		map = new google.maps.Map(document.getElementById("map_canvas"), myOptions);
+
+		// zoom時のイベント登録
+		google.maps.event.addListener(map, 'zoom_changed', function() {
+			f_zoom_changed();
+		});
+
+		// drag時のイベント登録
+		google.maps.event.addListener(map, 'drag', function() {
+			f_drag();
+		});
+
+		// dragstart時のイベント登録
+		google.maps.event.addListener(map, 'dragstart', function() {
+			f_dragstart();
+		});
+
+		// dragend時のイベント登録
+		google.maps.event.addListener(map, 'dragend', function() {
+			f_dragend();
+		});
+
+		drawLL10degree();	// 緯度経度を10度ずつ描画
+		checkCenterMark();	// センターマーク
+		f_zoom_changed();
+		disp_latlng();		// 座標表示
+	}
+
+	// event_ ============================================================================================================================================
+
+	function f_dragstart() {
+
+	}
+
+	function f_dragend() {
+		disp_latlng();		// 座標表示
+		disp_area();
+		drawAreabyZoom();
+
+//	document.form1.debug.value = map.getCenter().lat() + "," + map.getCenter().lng();
+	}
+
+	function f_drag() {
+		disp_latlng();		// 座標表示
+	}
+
+	function f_zoom_changed() {
+		// スケール取得＆表示
+		document.form1.GScale.value = map.getZoom();
+		f_dragend();
+	}
+
+	// get_ ============================================================================================================================================
+
+	function get_lat() {
+		// 中心緯度取得
+		return (map.getCenter()).lat();
+	}
+
+	function get_lng() {
+		// 中心経度取得
+		var lng = (map.getCenter()).lng();
+		if(lng > 360)	lng = 0 - (360 - (lng % 360));
+		if(lng > 180)	lng = 0 - (180 - (lng % 180));
+		if(lng < -360)	lng = 0 + (lng % 360);
+		if(lng < -180)	lng = 180 + (lng % 180);
+		return lng;
+	}
+
+	function round__(ll,p) {
+		// 座標丸め込み
+		var pp = parseFloat(Math.pow(10,p));
+		return Math.round(ll * pp) / pp;
+	}
+
+	// disp_ ============================================================================================================================================
+
+	function disp_area() {
+		// 中心座標取得
+		var lat = get_lat();
+		var lng = get_lng();
+		// 日本測地系
+//		if(Geotool.isJapan(lat, lng)) {
+		if(isJapan(lat, lng)) {
+
+			var wgs_lat = lat; var wgs_lng = lng;
+			var tky = Geotool.wgs2tky(lat, lng); lat = tky.lat; lng = tky.lng;
+
+			// MeshArea
+			var mesh_xy = pnd_mesh.deg2meshxy(lng,lat);
+			document.form1.MeshArea1.value = Math.floor(eval(mesh_xy.mesh) / 100);
+			document.form1.MeshArea2.value = mesh_xy.mesh;
+			document.form1.MeshArea3.value = mesh_xy.mesh + mesh_xy.n3 + mesh_xy.e3;
+
+			// MeshAreaG
+			var mesh_xyG = pnd_mesh.deg2meshxy(wgs_lng,wgs_lat);
+			document.form1.MeshAreaG1.value = Math.floor(eval(mesh_xyG.mesh) / 100);
+			document.form1.MeshAreaG2.value = mesh_xyG.mesh;
+			document.form1.MeshAreaG3.value = mesh_xyG.mesh + mesh_xyG.n3 + mesh_xyG.e3;
+
+			// BlockSetNo
+			var kiwi_value = kiwi_block.deg2kiwi(wgs_lng,wgs_lat);
+			document.form1.BlockSetNo.value = kiwi_value.BSNo;
+			document.form1.BlockParcelL2No.value = "[" + kiwi_value.BSNo + "][" + kiwi_value.BL2No + "]" + kiwi_value.PL2No + "," + kiwi_value.PL2Bx;
+			document.form1.BlockParcelL1No.value = "[" + (kiwi_value.BSNo+(32*1)) + "][" + kiwi_value.BL1No + "]" + kiwi_value.PL1No + "," + kiwi_value.PL1Bx;
+			document.form1.BlockParcelL0No.value = "[" + (kiwi_value.BSNo+(32*2)) + "][" + kiwi_value.BL0No + "]" + kiwi_value.PL0No + "," + kiwi_value.PL0Bx;
+			document.form1.BlockParcelLfNo.value = "[" + (kiwi_value.BSNo+(32*3)) + "][" + kiwi_value.BLfNo + "]" + kiwi_value.PLfNo + "," + kiwi_value.PLfBx;
+
+			// MappleArea
+			var mapple_xy = mapple_mesh.deg2mapple(lng,lat);
+			document.form1.MappleArea100.value = mapple_xy.m100;
+			document.form1.MappleArea20.value = mapple_xy.m20;
+			document.form1.MappleArea5.value = mapple_xy.m5;
+			document.form1.MappleArea25.value = mapple_xy.m25;
+			document.form1.MappleArea1.value = mapple_xy.m1;
+
+		} else {
+			document.form1.MeshArea1.value = "";
+			document.form1.MeshArea2.value = "";
+			document.form1.MeshArea3.value = "";
+			document.form1.MappleArea100.value = "";
+			document.form1.MappleArea20.value = "";
+			document.form1.MappleArea5.value = "";
+			document.form1.MappleArea25.value = "";
+			document.form1.MappleArea1.value = "";
+			document.form1.BlockSetNo.value = "";
+			document.form1.BlockParcelL2No.value = "";
+			document.form1.BlockParcelL1No.value = "";
+			document.form1.BlockParcelL0No.value = "";
+			document.form1.BlockParcelLfNo.value = "";
+		}
+	}
+
+	function clearLength() {
+		// clear
+		document.form1.MeshLenU.value = "";
+		document.form1.MeshLenL.value = "";
+		document.form1.MeshLenR.value = "";
+		document.form1.MeshLenB.value = "";
+		document.form1.MappleLenU.value = "";
+		document.form1.MappleLenL.value = "";
+		document.form1.MappleLenR.value = "";
+		document.form1.MappleLenB.value = "";
+		document.form1.PNDLenU.value = "";
+		document.form1.PNDLenL.value = "";
+		document.form1.PNDLenR.value = "";
+		document.form1.PNDLenB.value = "";
+	}
+
+	function disp_latlng() {
+		// 中心座標取得
+		var lat = get_lat();
+		var lng = get_lng();
+
+		var aLL = pnd_LL.deg2LL(lng,lat);
+		document.form1.centerLL.value = round__(lng,4) + "," + round__(lat,4);	// degree
+		document.form1.center1000.value = aLL.LL1000;	// 1/1000sec
+		document.form1.center1024.value = aLL.LL1024;	// 1/1024sec
+		document.form1.center256.value = aLL.LL256;	// 1/256sec
+		document.form1.center128.value = aLL.LL128;	// 1/128sec
+		document.form1.centerLL8.value = aLL.LL8;	// 1/8sec
+		document.form1.centerDMS.value = aLL.LLDMS;	// DMS
+
+		// 日本測地系
+//		if(Geotool.isJapan(lat, lng)) {
+		if(isJapan(lat, lng)) {
+
+			var wgs_lat = lat; var wgs_lng = lng;
+			var tky = Geotool.wgs2tky(lat, lng); lat = tky.lat; lng = tky.lng;
+
+			var aLLj = pnd_LL.deg2LL(lng,lat);
+			document.form1.centerLLj.value = "" + round__(lng,4) + "," + round__(lat,4);	// degree
+			document.form1.center1000j.value = aLLj.LL1000;	// 1/1000sec
+			document.form1.center1024j.value = aLLj.LL1024;	// 1/1024sec
+			document.form1.center256j.value = aLLj.LL256;	// 1/256sec
+			document.form1.center128j.value = aLLj.LL128;	// 1/128sec
+			document.form1.centerLL8j.value = aLLj.LL8;	// 1/8sec
+			document.form1.centerDMSj.value = aLLj.LLDMS;	// DMS
+
+			var mesh_xy = pnd_mesh.deg2meshxy(lng,lat);
+			document.form1.centerMXYj.value = mesh_xy.mesh + "," + mesh_xy.x + "," + mesh_xy.y;
+
+		} else {
+			document.form1.centerLLj.value = "not Japanese Area";
+			document.form1.center1000j.value = "not Japanese Area";
+			document.form1.center1024j.value = "not Japanese Area";
+			document.form1.center256j.value = "not Japanese Area";
+			document.form1.center128j.value = "not Japanese Area";
+			document.form1.centerLL8j.value = "not Japanese Area";
+			document.form1.centerDMSj.value = "not Japanese Area";
+			document.form1.centerMXYj.value = "not Japanese Area";
+		}
+	}
+
+	function isJapan(lat, lng) {
+		if(lat < 13)	return false;
+		if(58 < lat)	return false;
+		if(lng < 121)	return false;
+		if(154 < lng)	return false;
+		return true;
+	}
+
+	// class_ ============================================================================================================================================
+
+	var pnd_LL = {
+		deg2LL : function(lng,lat) {
+			var LL1000 = parseFloat((Math.floor(lng)*3600*1000) + Math.round((lng%1.0)*3600*1000)) + "/" + parseFloat((Math.floor(lat)*3600*1000) + Math.round((lat%1.0)*3600*1000));
+			var LL1024 = parseFloat((Math.floor(lng)*3600*1024) + Math.round((lng%1.0)*3600*1024)) + "," + parseFloat((Math.floor(lat)*3600*1024) + Math.round((lat%1.0)*3600*1024));
+			var LL256  = parseFloat((Math.floor(lng)*3600*256) + Math.round((lng%1.0)*3600*256)) + "," + parseFloat((Math.floor(lat)*3600*256) + Math.round((lat%1.0)*3600*256));
+			var LL128  = parseFloat((Math.floor(lng)*3600*128) + Math.round((lng%1.0)*3600*128)) + "," + parseFloat((Math.floor(lat)*3600*128) + Math.round((lat%1.0)*3600*128));
+			var LL8    = parseFloat((Math.floor(lng)*3600*8) + Math.round((lng%1.0)*3600*8)) + "," + parseFloat((Math.floor(lat)*3600*8) + Math.round((lat%1.0)*3600*8));
+			var LLDMS  = "E" + Geotool.deg2dms(lng) + "N" + Geotool.deg2dms(lat);
+
+			return { LL1000 : LL1000, LL1024 : LL1024, LL256 : LL256, LL128 : LL128, LL8 : LL8, LLDMS : LLDMS };
+		}
+	};
+
+	var pnd_mesh = {
+		deg2meshxy : function(lng,lat) {
+			var e1 = Math.floor((lng-100)/1);
+			var n1 = Math.floor((lat/1) * 3 / 2);
+			var e2 = Math.floor((lng-100-e1)*8);
+			var n2 = Math.floor(((lat*3/2)-n1)*8);
+			var e3 = Math.floor((((lng - 100 - e1) * 8) - e2) * 16);
+			var n3 = Math.floor(((((lat * 3 / 2) - n1) * 8) - n2) * 16);
+			var x  = Math.floor((lng-e1-100-(e2/8))*8*1000000);
+			var y  = Math.floor((lat*3/2-n1-(n2/8))*8*1000000);
+
+			return { mesh : n1 + "" + e1 + "" + n2 + "" + e2, x : x, y : y, e3 : e3.toString(16), n3 : n3.toString(16) };
+		}
+	};
+
+	var kiwi_block = {
+		deg2kiwi : function(lng,lat) {
+			var lng1000 = parseFloat((Math.floor(lng)*3600*1000) + Math.round((lng%1.0)*3600*1000));
+			var lat1000 = parseFloat((Math.floor(lat)*3600*1000) + Math.round((lat%1.0)*3600*1000));
+
+			var i = 0; var j = 0;
+			
+			var BSWidth = (hashKWArea['R'] - hashKWArea['L']) / hashKWBlockSet['H'];	// ブロックセット幅
+			var BSHeight= (hashKWArea['T'] - hashKWArea['B']) / hashKWBlockSet['V'];	// ブロックセット高さ
+			i = Math.floor((lng1000 - hashKWArea['L']) / BSWidth);
+			j = Math.floor((lat1000 - hashKWArea['B']) / BSHeight);
+			var BSNo = (j * hashKWBlockSet['H']) + i;
+			var BSL = hashKWArea['L'] + (BSWidth * i);
+			var BSB = hashKWArea['B'] + (BSHeight * j);
+
+			var BL2Width = BSWidth / hashKWBlock['L2'];	 // ブロック幅
+			var BL2Height= BSHeight/ hashKWBlock['L2'];	 // ブロック高さ
+			i = Math.floor((lng1000 - BSL) / BL2Width);
+			j = Math.floor((lat1000 - BSB) / BL2Height);
+			var BL2No = (j * hashKWBlock['L2']) + i;
+			var BL2L = BSL + (BL2Width * i);
+			var BL2B = BSB + (BL2Height * j);
+			
+			var PL2Width = BL2Width / hashKWParcel['L2'];	 // パーセル幅
+			var PL2Height= BL2Height/ hashKWParcel['L2'];	 // パーセル高さ
+			i = Math.floor((lng1000 - BL2L) / PL2Width);
+			j = Math.floor((lat1000 - BL2B) / PL2Height);
+			var PL2No = (j * hashKWParcel['L2']) + i;
+			i = Math.floor((lng1000 - BL2L) / (PL2Width/2))%2;
+			j = Math.floor((lat1000 - BL2B) / (PL2Height/2))%2;
+			var PL2Bx=(j*2)+i;
+
+			var BL1Width = BSWidth / hashKWBlock['L1'];	 // ブロック幅
+			var BL1Height= BSHeight/ hashKWBlock['L1'];	 // ブロック高さ
+			i = Math.floor((lng1000 - BSL) / BL1Width);
+			j = Math.floor((lat1000 - BSB) / BL1Height);
+			var BL1No = (j * hashKWBlock['L1']) + i;
+			var BL1L = BSL + (BL1Width * i);
+			var BL1B = BSB + (BL1Height * j);
+			
+			var PL1Width = BL1Width / hashKWParcel['L1'];	 // パーセル幅
+			var PL1Height= BL1Height/ hashKWParcel['L1'];	 // パーセル高さ
+			i = Math.floor((lng1000 - BL1L) / PL1Width);
+			j = Math.floor((lat1000 - BL1B) / PL1Height);
+			var PL1No = (j * hashKWParcel['L1']) + i;
+			i = Math.floor((lng1000 - BL1L) / (PL1Width/2))%2;
+			j = Math.floor((lat1000 - BL1B) / (PL1Height/2))%2;
+			var PL1Bx=(j*2)+i;
+			
+			var BL0Width = BSWidth / hashKWBlock['L0'];	 // ブロック幅
+			var BL0Height= BSHeight/ hashKWBlock['L0'];	 // ブロック高さ
+			i = Math.floor((lng1000 - BSL) / BL0Width);
+			j = Math.floor((lat1000 - BSB) / BL0Height);
+			var BL0No = (j * hashKWBlock['L0']) + i;
+			var BL0L = BSL + (BL0Width * i);
+			var BL0B = BSB + (BL0Height * j);
+			
+			var PL0Width = BL0Width / hashKWParcel['L0'];	 // パーセル幅
+			var PL0Height= BL0Height/ hashKWParcel['L0'];	 // パーセル高さ
+			i = Math.floor((lng1000 - BL0L) / PL0Width);
+			j = Math.floor((lat1000 - BL0B) / PL0Height);
+			var PL0No = (j * hashKWParcel['L0']) + i;
+			i = Math.floor((lng1000 - BL0L) / (PL0Width/2))%2;
+			j = Math.floor((lat1000 - BL0B) / (PL0Height/2))%2;
+			var PL0Bx=(j*2)+i;
+			
+			var BLfWidth = BSWidth / hashKWBlock['Lf'];	 // ブロック幅
+			var BLfHeight= BSHeight/ hashKWBlock['Lf'];	 // ブロック高さ
+			i = Math.floor((lng1000 - BSL) / BLfWidth);
+			j = Math.floor((lat1000 - BSB) / BLfHeight);
+			var BLfNo = (j * hashKWBlock['Lf']) + i;
+			var BLfL = BSL + (BLfWidth * i);
+			var BLfB = BSB + (BLfHeight * j);
+			
+			var PLfWidth = BLfWidth / hashKWParcel['Lf'];	 // パーセル幅
+			var PLfHeight= BLfHeight/ hashKWParcel['Lf'];	 // パーセル高さ
+			i = Math.floor((lng1000 - BLfL) / PLfWidth);
+			j = Math.floor((lat1000 - BLfB) / PLfHeight);
+			var PLfNo = (j * hashKWParcel['Lf']) + i;
+			i = Math.floor((lng1000 - BLfL) / (PLfWidth/2))%2;
+			j = Math.floor((lat1000 - BLfB) / (PLfHeight/2))%2;
+			var PLfBx=(j*2)+i;
+			
+			return { BSNo : BSNo, BL2No : BL2No, BL1No : BL1No, BL0No : BL0No, BLfNo : BLfNo
+								, PL2No : PL2No, PL1No : PL1No, PL0No : PL0No, PLfNo : PLfNo
+								, PL2Bx : PL2Bx, PL1Bx : PL1Bx, PL0Bx : PL0Bx, PLfBx : PLfBx
+					};
+		}
+	};
+
+	var mapple_mesh = {
+		deg2mapple : function(lng,lat) {
+			var e1 = Math.floor((lng-100)/1);
+			var n1 = Math.floor((lat/1) * 3 / 2);
+			var e2 = Math.floor((lng-100-e1)*8);
+			var n2 = Math.floor(((lat*3/2)-n1)*8);
+			var e3 = Math.floor((((lng - 100 - e1) * 8) - e2) * 16);
+			var n3 = Math.floor(((((lat * 3 / 2) - n1) * 8) - n2) * 16);
+
+			var k10000 = 0;
+			if((e3<8)&&(n3<8)){
+				k10000 = 1;
+			}else if((7<e3)&&(n3<8)){
+				k10000 = 2;
+			}else if((e3<8)&&(7<n3)){
+				k10000 = 3;
+			}else if((7<e3)&&(7<n3)){
+				k10000 = 4;
+			}
+
+			var n51 = 0;
+			if(Math.floor(n2 / 4)) n51 = 3; else n51 = 1;
+			if(Math.floor(e2 / 4)) n51 = n51 + 1;
+			var n52 = "";
+			if(((n2==0)||(n2==1)||(n2==4)||(n2==5))&&((e2==0)||(e2==1)||(e2==4)||(e2==5)))	n52 = "A"
+			if(((n2==0)||(n2==1)||(n2==4)||(n2==5))&&((e2==2)||(e2==3)||(e2==6)||(e2==7)))	n52 = "B"
+			if(((n2==2)||(n2==3)||(n2==6)||(n2==7))&&((e2==0)||(e2==1)||(e2==4)||(e2==5)))	n52 = "C"
+			if(((n2==2)||(n2==3)||(n2==6)||(n2==7))&&((e2==2)||(e2==3)||(e2==6)||(e2==7)))	n52 = "D"
+
+			var n100t = Math.floor(lat / (10 / 3));
+			var n100 = new Array("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O");
+			var e100 = Math.floor(lng / 5);
+
+			return {
+				m1 : n1 + "" + e1 + "" + n2 + "" + e2 + k10000,
+				m25 : n1 + "" + e1 + "" + n2 + "" + e2,
+				m5 : n1 + "" + e1 + "" + n51 + n52,
+				m20 : n1 + "" + e1,
+				m100 : n100[n100t] + "" + e100
+			};
+		}
+	};
+
+	var area_info = {
+		get : function(target,level,str_value) {
+			// メッシュ、レベル、Area文字列指定→左下座標、中心座標、辺の長さを取得（Ret:日本測地系、degree）
+			var b_lng=0; var b_lat=0; var c_lng=0; var c_lat=0; var h=0; var w=0;
+			var upper = 0; var right = 0;
+
+			// メッシュ文字列が指定されない場合、現在地からメッシュ文字列を定義
+			if('' == str_value) {
+				// 中心座標取得
+				var lat = get_lat();
+				var lng = get_lng();
+				// 日本測地系
+				if(isJapan(lat, lng)) {
+					var wgs_lat = lat; var wgs_lng = lng;
+					var tky = Geotool.wgs2tky(lat, lng); lat = tky.lat; lng = tky.lng;
+					if(target == 'Mesh') {
+						var mesh_xy = pnd_mesh.deg2meshxy(lng,lat);
+						if(level == 1) {
+							str_value = "" + Math.floor(eval(mesh_xy.mesh) / 100);
+						} else
+						if(level == 2) {
+							str_value = "" + mesh_xy.mesh;
+						} else
+						if(level == 3) {
+							str_value = "" + mesh_xy.mesh + "" + mesh_xy.n3 + "" + mesh_xy.e3;
+						}
+					} else
+					if(target == 'MeshG') {
+						var mesh_xy = pnd_mesh.deg2meshxy(wgs_lng,wgs_lat);
+						if(level == 1) {
+							str_value = "" + Math.floor(eval(mesh_xy.mesh) / 100);
+						} else
+						if(level == 2) {
+							str_value = "" + mesh_xy.mesh;
+						} else
+						if(level == 3) {
+							str_value = "" + mesh_xy.mesh + "" + mesh_xy.n3 + "" + mesh_xy.e3;
+						}
+					} else
+					if(target == 'Mapple') {
+						var mapple_xy = mapple_mesh.deg2mapple(lng,lat);
+						if(level == 100) {
+							str_value = "" + mapple_xy.m100;
+						} else
+						if(level == 20) {
+							str_value = "" + mapple_xy.m20;
+						} else
+						if(level == 5) {
+							str_value = "" + mapple_xy.m5;
+						} else
+						if(level == 25) {
+							str_value = "" + mapple_xy.m25;
+						} else
+						if(level == 1) {
+							str_value = "" + mapple_xy.m1;
+						}
+					} else
+					if(target == 'PND') {
+						var mesh_xy = pnd_mesh.deg2meshxy(lng,lat);
+						if(level == 10) {
+							str_value = "" + Math.floor(eval(mesh_xy.mesh) / 100);
+						} else
+						if(level == 8) {
+							str_value = "" + Math.floor(eval(mesh_xy.mesh) / 100);
+						} else
+						if(level == 6) {
+							str_value = "" + Math.floor(eval(mesh_xy.mesh) / 100);
+						} else
+						if(level == 4) {
+							str_value = "" + mesh_xy.mesh;
+						} else
+						if(level == 2) {
+							str_value = "" + mesh_xy.mesh;
+						} else
+						if(level == 0) {
+							str_value = "" + mesh_xy.mesh + "" + mesh_xy.n3 + "" + mesh_xy.e3;
+						} else
+						if(level == 'm2') {
+							str_value = "" + mesh_xy.mesh + "" + mesh_xy.n3 + "" + mesh_xy.e3;
+						}
+					}
+				} else {
+					return { base_lng : b_lng, base_lat : b_lat, center_lng : c_lng, center_lat : c_lat, height : h, width : w };
+				}
+			}
+
+			if((target == 'Mesh')||(target == 'MeshG')) {
+				var n1 = Math.floor(eval(str_value.substr(0, 4)) / 100);
+				var e1 = Math.floor(eval(str_value.substr(0, 4)) % 100);
+				var n2 = 0; var e2 = 0;
+				if(6<=str_value.length) { n2 = eval(str_value.substr(4, 1)); e2 = eval(str_value.substr(5, 1)); }
+				var n3 = 0; var e3 = 0;
+				if(8<=str_value.length) { n3 = parseInt((str_value.substr(6, 1)),16); e3 = parseInt((str_value.substr(7, 1)),16); }
+				if(level == 1) {
+					b_lat = n1 * 2 / 3;
+					b_lng = e1 + 100;
+					upper = (n1+1) * 2 / 3;
+					right = (e1+1) + 100;
+				} else
+				if(level == 2) {
+					b_lat = (n1 * 2 / 3) + (2 / 3 / 8) * n2;
+					b_lng = (e1 + 100) + (1 / 8) * e2;
+					upper = (n1 * 2 / 3) + (2 / 3 / 8) * (n2+1);
+					right = (e1 + 100) + (1 / 8) * (e2+1);
+				} else
+				if(level == 3) {
+					b_lat = (n1 * 2 / 3) + (2 / 3 / 8) * n2 + (2 / 3 / 8 / 16) * n3;
+					b_lng = (e1 + 100) + (1 / 8) * e2 + (1 / 8 / 16) * e3;
+					upper = (n1 * 2 / 3) + (2 / 3 / 8) * n2 + (2 / 3 / 8 / 16) * (n3+1);
+					right = (e1 + 100) + (1 / 8) * e2 + (1 / 8 / 16) * (e3+1);
+				}
+			} else
+			if(target == 'Mapple') {
+				var n1 = 0; var e1 = 0;
+				if(4<=str_value.length) { n1 = Math.floor(eval(str_value.substr(0, 4)) / 100); e1 = Math.floor(eval(str_value.substr(0, 4)) % 100); }
+				if(level == 100) {
+					var strN = str_value.substr(0, 1);
+					var strE = str_value.substr(1, 2);
+					var hashN = { 'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4, 'F': 5, 'G': 6, 'H': 7, 'I': 8, 'J': 9, 'K': 10, 'L': 11, 'M': 12, 'N': 13, 'O': 14 };
+					b_lat = eval(hashN[strN]) * (10 / 3);
+					b_lng = eval(strE) * 5;
+					upper = eval(hashN[strN]+1) * (10 / 3);
+					right = (eval(strE)+1) * 5;
+				} else
+				if(level == 20) {
+					b_lat = n1 * 2 / 3;
+					b_lng = e1 + 100;
+					upper = (n1+1) * 2 / 3;
+					right = (e1+1) + 100;
+				} else
+				if(level == 5) {
+					b_lat = n1 * 2 / 3;
+					b_lng = e1 + 100;
+					var k1 = str_value.substr(4, 1);
+					if(0==(k1 % 2)) b_lng = b_lng + 1 / 2; if(1<(k1/2)) b_lat = b_lat + (2 / 3 / 2);
+					var k2 = str_value.substr(5, 1);
+					if(('B'==k2)||('D'==k2)) b_lng = b_lng + (1 / 4); if(('C'==k2)||('D'==k2)) b_lat = b_lat + (2 / 3 / 2 / 2);
+					upper = b_lat + (2 / 3 / 2 / 2);
+					right = b_lng + (1 / 4);
+				} else
+				if(level == 25) {
+					n2 = eval(str_value.substr(4, 1)); e2 = eval(str_value.substr(5, 1));
+					b_lat = (n1 * 2 / 3) + (2 / 3 / 8) * n2;
+					b_lng = (e1 + 100) + (1 / 8) * e2;
+					upper = (n1 * 2 / 3) + (2 / 3 / 8) * (n2+1);
+					right = (e1 + 100) + (1 / 8) * (e2+1);
+				} else
+				if(level == 1) {
+					n2 = eval(str_value.substr(4, 1)); e2 = eval(str_value.substr(5, 1));
+					var k = str_value.substr(6, 1);
+					var n3 = 0; if(1 <(k/2)) n3 = (2 / 3 / 8 / 2);
+					var e3 = 0; if(0==(k/2)) e3 = (1 / 8 / 2);
+					b_lat = (n1 * 2 / 3) + (2 / 3 / 8) * n2 + n3;
+					b_lng = (e1 + 100) + (1 / 8) * e2 + e3;
+					upper = (n1 * 2 / 3) + (2 / 3 / 8) * n2 + n3 + (2 / 3 / 8 / 2);
+					right = (e1 + 100) + (1 / 8) * e2 + e3 + (1 / 8 / 2);
+				}
+			} else
+			if(target == 'PND') {
+				var n1 = Math.floor(eval(str_value.substr(0, 4)) / 100);
+				var e1 = Math.floor(eval(str_value.substr(0, 4)) % 100);
+				var n2 = 0; var e2 = 0;
+				if(6<=str_value.length) { n2 = eval(str_value.substr(4, 1)); e2 = eval(str_value.substr(5, 1)); }
+				var n3 = 0; var e3 = 0;
+				if(8<=str_value.length) { n3 = parseInt((str_value.substr(6, 1)),16); e3 = parseInt((str_value.substr(7, 1)),16); }
+				if(level == 10) {
+					n1 = (Math.floor((n1-22)/32) * 32) + 22;
+					e1 = (Math.floor((e1-22)/32) * 32) + 22;
+					b_lat = n1 * 2 / 3;
+					b_lng = e1 + 100;
+					upper = (n1+32) * 2 / 3;
+					right = (e1+32) + 100;
+				} else
+				if(level == 8) {
+					n1 = (Math.floor((n1-22)/8) * 8) + 22;
+					e1 = (Math.floor((e1-22)/8) * 8) + 22;
+					b_lat = n1 * 2 / 3;
+					b_lng = e1 + 100;
+					upper = (n1+8) * 2 / 3;
+					right = (e1+8) + 100;
+				} else
+				if(level == 6) {
+					n1 = n1 - (n1%2);
+					e1 = e1 - (e1%2);
+					b_lat = n1 * 2 / 3;
+					b_lng = e1 + 100;
+					upper = (n1+2) * 2 / 3;
+					right = (e1+2) + 100;
+				} else
+				if(level == 4) {
+					n2 = Math.floor(n2 / 4) * 4;
+					e2 = Math.floor(e2 / 4) * 4;
+					b_lat = (n1 * 2 / 3) + (2 / 3 / 8) * n2;
+					b_lng = (e1 + 100) + (1 / 8) * e2;
+					upper = (n1 * 2 / 3) + (2 / 3 / 8) * (n2+4);
+					right = (e1 + 100) + (1 / 8) * (e2+4);
+				} else
+				if(level == 2) {
+					b_lat = (n1 * 2 / 3) + (2 / 3 / 8) * n2;
+					b_lng = (e1 + 100) + (1 / 8) * e2;
+					upper = (n1 * 2 / 3) + (2 / 3 / 8) * (n2+1);
+					right = (e1 + 100) + (1 / 8) * (e2+1);
+				} else
+				if(level == 0) {
+					n3 = Math.floor(n3 - (n3 % 4));
+					e3 = Math.floor(e3 - (e3 % 4));
+					b_lat = (n1 * 2 / 3) + (2 / 3 / 8) * n2 + (2 / 3 / 8 / 16) * n3;
+					b_lng = (e1 + 100) + (1 / 8) * e2 + (1 / 8 / 16) * e3;
+					upper = (n1 * 2 / 3) + (2 / 3 / 8) * n2 + (2 / 3 / 8 / 16) * (n3+4);
+					right = (e1 + 100) + (1 / 8) * e2 + (1 / 8 / 16) * (e3+4);
+				} else
+				if(level == 'm2') {
+					b_lat = (n1 * 2 / 3) + (2 / 3 / 8) * n2 + (2 / 3 / 8 / 16) * n3;
+					b_lng = (e1 + 100) + (1 / 8) * e2 + (1 / 8 / 16) * e3;
+					upper = (n1 * 2 / 3) + (2 / 3 / 8) * n2 + (2 / 3 / 8 / 16) * (n3+1);
+					right = (e1 + 100) + (1 / 8) * e2 + (1 / 8 / 16) * (e3+1);
+				}
+			}
+
+			h = eval(upper)-eval(b_lat);
+			w = eval(right)-eval(b_lng);
+			c_lat = eval(b_lat) + h / 2;
+			c_lng = eval(b_lng) + w / 2;
+			return { base_lng : b_lng, base_lat : b_lat, center_lng : c_lng, center_lat : c_lat, height : h, width : w };
+		}
+	};
+
+	var move_where = {
+		get : function(_area_info) {
+			var lat, lng;
+			if(document.form1.MoveLowleft.checked) { lat = _area_info.base_lat; lng = _area_info.base_lng; }
+			if(document.form1.MoveCenter.checked) { lat = _area_info.center_lat; lng = _area_info.center_lng; }
+			if(document.form1.MoveUpperright.checked) { lat = _area_info.base_lat+_area_info.height; lng = _area_info.base_lng+_area_info.width; }
+
+			return { lat : lat, lng : lng };
+		}
+	};
+
+	// move_ ============================================================================================================================================
+
+	// http://code.google.com/intl/ja/apis/maps/documentation/javascript/services.html#ReverseGeocoding
+	function search_address() {
+		var address = document.getElementById("address").value;
+		if (address == "")	return;
+		if (geocoder) {
+			geocoder.geocode( { 'address': address}, function(results, status) {
+				if (status == google.maps.GeocoderStatus.OK) {
+					map.setCenter(results[0].geometry.location);
+					f_dragend();
+				} else {
+					alert("Geocode was not successful for the following reason: " + status);
+				}
+			});
+		}
+	}
+
+	// 世界測地系、移動
+	function move_w(lat,lng,obj) {
+		var scale = map.getZoom();
+		map.setCenter(new google.maps.LatLng(lat, lng), scale);
+		f_dragend();
+	}
+
+	// 日本測地系→世界測地系、移動
+	function move_(lat,lng,obj) {
+		var wgs = Geotool.tky2wgs(lat, lng);
+		if(isJapan(wgs.lat, wgs.lng)) {
+			lat = wgs.lat; lng = wgs.lng;
+			var scale = map.getZoom();
+			map.setCenter(new google.maps.LatLng(lat, lng), scale);
+			f_dragend();
+		} else {
+			window.alert("not Japan area !");
+		}
+	}
+
+	// 日本測地系→世界測地系、Degree→Degree（変換なし）、移動
+	function move_centerLLj() {
+		var obj = document.form1.centerLLj;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = eval(strY); var lng = eval(strX);
+		move_(lat,lng,obj);
+	}
+	// 世界測地系、Degree→Degree（変換なし）、移動
+	function move_centerLL() {
+		var obj = document.form1.centerLL;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = eval(strY); var lng = eval(strX);
+		move_w(lat,lng,obj);
+	}
+
+	// 日本測地系→世界測地系、1/1000sec→Degree、移動
+	function move_center1000j() {
+		var obj = document.form1.center1000j;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf("/", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*1000)) + parseFloat((eval(strY)/(3600*1000))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*1000)) + parseFloat((eval(strX)/(3600*1000))%1.0);
+		move_(lat,lng,obj);
+	}
+	// 世界測地系、1/1000sec→Degree、移動
+	function move_center1000() {
+		var obj = document.form1.center1000;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf("/", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*1000)) + parseFloat((eval(strY)/(3600*1000))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*1000)) + parseFloat((eval(strX)/(3600*1000))%1.0);
+		move_w(lat,lng,obj);
+	}
+
+	// 日本測地系→世界測地系、1/1024sec→Degree、移動
+	function move_center1024j() {
+		var obj = document.form1.center1024j;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*1024)) + parseFloat((eval(strY)/(3600*1024))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*1024)) + parseFloat((eval(strX)/(3600*1024))%1.0);
+		move_(lat,lng,obj);
+	}
+	// 世界測地系、1/1024sec→Degree、移動
+	function move_center1024() {
+		var obj = document.form1.center1024;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*1024)) + parseFloat((eval(strY)/(3600*1024))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*1024)) + parseFloat((eval(strX)/(3600*1024))%1.0);
+		move_w(lat,lng,obj);
+	}
+
+	// 日本測地系→世界測地系、1/256sec→Degree、移動
+	function move_center256j() {
+		var obj = document.form1.center256j;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*256)) + parseFloat((eval(strY)/(3600*256))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*256)) + parseFloat((eval(strX)/(3600*256))%1.0);
+		move_(lat,lng,obj);
+	}
+	// 世界測地系、1/256sec→Degree、移動
+	function move_center256() {
+		var obj = document.form1.center256;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*256)) + parseFloat((eval(strY)/(3600*256))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*256)) + parseFloat((eval(strX)/(3600*256))%1.0);
+		move_w(lat,lng,obj);
+	}
+
+	// 日本測地系→世界測地系、1/128sec→Degree、移動
+	function move_center128j() {
+		var obj = document.form1.center128j;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*128)) + parseFloat((eval(strY)/(3600*128))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*128)) + parseFloat((eval(strX)/(3600*128))%1.0);
+		move_(lat,lng,obj);
+	}
+	// 世界測地系、1/128sec→Degree、移動
+	function move_center128() {
+		var obj = document.form1.center128;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*128)) + parseFloat((eval(strY)/(3600*128))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*128)) + parseFloat((eval(strX)/(3600*128))%1.0);
+		move_w(lat,lng,obj);
+	}
+
+	// 日本測地系→世界測地系、1/8sec→Degree、移動
+	function move_centerLL8j() {
+		var obj = document.form1.centerLL8j;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*8)) + parseFloat((eval(strY)/(3600*8))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*8)) + parseFloat((eval(strX)/(3600*8))%1.0);
+		move_(lat,lng,obj);
+	}
+	// 世界測地系、1/8sec→Degree、移動
+	function move_centerLL8() {
+		var obj = document.form1.centerLL8;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var index = obj.value.indexOf(",", 0);
+		var strY = obj.value.substring(0, index);
+		var strX = obj.value.substring(index+1, obj.value.length);
+		if(eval(strY) > eval(strX)){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = Math.floor(eval(strY)/(3600*8)) + parseFloat((eval(strY)/(3600*8))%1.0);
+		var lng = Math.floor(eval(strX)/(3600*8)) + parseFloat((eval(strX)/(3600*8))%1.0);
+		move_w(lat,lng,obj);
+	}
+
+	// 日本測地系→世界測地系、DMS→Degree、移動
+	function move_centerDMSj() {
+		var obj = document.form1.centerDMSj;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var nNIndex = obj.value.indexOf("N", 0);
+		var nEIndex = obj.value.indexOf("E", 0);
+		var strY = []; var strX = [];
+		if(nNIndex < nEIndex){
+			strY = obj.value.substring(nNIndex+1, nEIndex).split(".");
+			strX = obj.value.substring(nEIndex+1, obj.value.length).split(".");
+		} else {
+			strY = obj.value.substring(nEIndex+1, nNIndex).split(".");
+			strX = obj.value.substring(nNIndex+1, obj.value.length).split(".");
+		}
+		if(eval(strY[0]) > eval(strX[0])){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = eval(strY[0]) + eval(strY[1]) / 60 + eval(strY[2]) / 3600 + eval(strY[3]) / 3600 / 100;
+		var lng = eval(strX[0]) + eval(strX[1]) / 60 + eval(strX[2]) / 3600 + eval(strX[3]) / 3600 / 100;
+		move_(lat,lng,obj);
+	}
+	// 世界測地系、DMS→Degree、移動
+	function move_centerDMS() {
+		var obj = document.form1.centerDMS;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var nNIndex = obj.value.indexOf("N", 0);
+		var nEIndex = obj.value.indexOf("E", 0);
+		var strY = []; var strX = [];
+		if(nNIndex < nEIndex){
+			strY = obj.value.substring(nNIndex+1, nEIndex).split(".");
+			strX = obj.value.substring(nEIndex+1, obj.value.length).split(".");
+		} else {
+			strY = obj.value.substring(nEIndex+1, nNIndex).split(".");
+			strX = obj.value.substring(nNIndex+1, obj.value.length).split(".");
+		}
+		if(eval(strY[0]) > eval(strX[0])){
+			var strT = strX;
+			strX = strY;
+			strY = strT;
+		}
+		var lat = eval(strY[0]) + eval(strY[1]) / 60 + eval(strY[2]) / 3600 + eval(strY[3]) / 3600 / 100;
+		var lng = eval(strX[0]) + eval(strX[1]) / 60 + eval(strX[2]) / 3600 + eval(strX[3]) / 3600 / 100;
+		move_w(lat,lng,obj);
+	}
+
+	// 日本測地系→世界測地系、MeshXY→Degree、移動
+	function move_centerMXYj() {
+		var obj = document.form1.centerMXYj;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var str = obj.value.split(",");
+		var mesh = eval(str[0]); var x = eval(str[1]); var y = eval(str[2]);
+
+		var lat = ((Math.floor(mesh / 10000)) + ((Math.floor(mesh / 10) % 10) / 8) + (y / 1000000 / 8)) * 2 / 3;
+		var lng = (Math.floor(mesh / 100) % 100) + 100 + ((mesh % 10) / 8) + (x / 1000000 / 8);
+		move_(lat,lng,obj);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerMeshArea1() {
+		var obj = document.form1.MeshArea1;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('Mesh',1,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['MeshArea1']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerMeshArea2() {
+		var obj = document.form1.MeshArea2;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('Mesh',2,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['MeshArea2']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerMeshArea3() {
+		var obj = document.form1.MeshArea3;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('Mesh',3,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['MeshArea3']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerMappleArea100() {
+		var obj = document.form1.MappleArea100;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('Mapple',100,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['MappleArea100']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerMappleArea20() {
+		var obj = document.form1.MappleArea20;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('Mapple',20,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['MappleArea20']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerMappleArea5() {
+		var obj = document.form1.MappleArea5;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('Mapple',5,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['MappleArea5']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerMappleArea25() {
+		var obj = document.form1.MappleArea25;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('Mapple',25,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['MappleArea25']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerMappleArea1() {
+		var obj = document.form1.MappleArea1;
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('Mapple',1,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['MappleArea1']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerPNDArea10() {
+		var obj = document.form1.MeshArea1;		// Lv10 = 1mesh x(32x32); 2222base
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('PND',10,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['PNDArea10']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerPNDArea8() {
+		var obj = document.form1.MeshArea1;		// Lv8 = 1mesh x(8x8); 2222base
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('PND',8,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['PNDArea8']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerPNDArea6() {
+		var obj = document.form1.MeshArea1;		// Lv6 = 1mesh x(2x2)
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('PND',6,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['PNDArea6']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerPNDArea4() {
+		var obj = document.form1.MeshArea2;		// Lv4 = 2mesh x(4x4)
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('PND',4,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['PNDArea4']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerPNDArea2() {
+		var obj = document.form1.MeshArea2;		// Lv2 = 2mesh x1
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('PND',2,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['PNDArea2']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerPNDArea0() {
+		var obj = document.form1.MeshArea3;		// Lv0 = 3mesh x(4x4)
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('PND',0,obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['PNDArea0']);
+	}
+
+	// 日本測地系→世界測地系、Area→Degree、Rect格納、真ん中移動
+	function move_centerPNDAream2() {
+		var obj = document.form1.MeshArea3;		// Lv-2 = 3mesh x1
+		obj.value = obj.value.replace(/^\s+|\s+$/g, "");
+		if (obj.value == "")	return;
+		var info = area_info.get('PND','m2',obj.value);
+		var mwhere = move_where.get(info); move_(mwhere.lat,mwhere.lng,obj);
+		if(isJapan(info.center_lat,info.center_lng)) map.setZoom(hashLevel['PNDAream2']);
+	}
+
+	// draw_ ============================================================================================================================================
+
+	function drawAreabyZoom() {
+
+		// 中心座標取得
+		var lat = get_lat();
+		var lng = get_lng();
+		// 日本測地系
+		if(! isJapan(lat, lng)) {
+			return;
+		}
+		clearAreaArray();
+		clearButtonColor();
+
+		clearLength();
+
+		var z = map.getZoom();
+
+		// MeshArea
+		if(document.form1.MeshArea.checked) {
+			if((					 5 <= z)&&(z <= hashLevel['MeshArea1']))	drawArea('Mesh','1');
+			if((hashLevel['MeshArea1'] <  z)&&(z <= hashLevel['MeshArea2']))	drawArea('Mesh','2');
+			if (hashLevel['MeshArea2'] <  z)									drawArea('Mesh','3');
+		}
+		if(document.form1.MeshAreaB.checked) {
+			drawArea('Mesh','2');
+		}
+
+		// MeshAreaG
+		if(document.form1.MeshAreaG.checked) {
+			if((					 5 <= z)&&(z <= hashLevel['MeshAreaG1']))	drawArea('MeshG','1');
+			if((hashLevel['MeshAreaG1'] <  z)&&(z <= hashLevel['MeshAreaG2']))	drawArea('MeshG','2');
+			if (hashLevel['MeshAreaG2'] <  z)									drawArea('MeshG','3');
+		}
+
+		// MappleArea
+		if(document.form1.MappleArea.checked) {
+			if((						 5 <= z)&&(z <= hashLevel['MappleArea100']))	drawArea('Mapple','100');
+			if((hashLevel['MappleArea100'] <  z)&&(z <= hashLevel['MappleArea20'] ))	drawArea('Mapple','20');
+			if((hashLevel['MappleArea20']  <  z)&&(z <= hashLevel['MappleArea5']  ))	drawArea('Mapple','5');
+			if((hashLevel['MappleArea5']   <  z)&&(z <= hashLevel['MappleArea25'] ))	drawArea('Mapple','25');
+			if (hashLevel['MappleArea25']  <  z)										drawArea('Mapple','1');
+		}
+
+		// PNDArea
+		if(document.form1.PNDArea.checked) {
+			if((					 4 <= z)&&(z <= hashLevel['PNDArea10']))	drawArea('PND','10');
+			if((hashLevel['PNDArea10'] <  z)&&(z <= hashLevel['PNDArea8'] ))	drawArea('PND','8');
+			if((hashLevel['PNDArea8']  <  z)&&(z <= hashLevel['PNDArea6'] ))	drawArea('PND','6');
+			if((hashLevel['PNDArea6']  <  z)&&(z <= hashLevel['PNDArea4'] ))	drawArea('PND','4');
+			if((hashLevel['PNDArea4']  <  z)&&(z <= hashLevel['PNDArea2'] ))	drawArea('PND','2');
+			if((hashLevel['PNDArea2']  <  z)&&(z <= hashLevel['PNDArea0'] ))	drawArea('PND','0');
+			if (hashLevel['PNDArea0']  <  z)									drawArea('PND','m2');
+		}
+
+		// BlockSet
+		if(document.form1.BlockSet.checked) {
+			if((					 4 <= z)&&(z <= hashLevel['PNDArea10']))	drawArea('BlockSet','10');
+			if((hashLevel['PNDArea10'] <  z)&&(z <= hashLevel['PNDArea8'] ))	drawArea('BlockSet','8');
+			if((hashLevel['PNDArea8']  <  z)&&(z <= hashLevel['PNDArea6'] ))	drawArea('BlockSet','6');
+			if((hashLevel['PNDArea6']  <  z)&&(z <= hashLevel['PNDArea4'] ))	drawArea('BlockSet','4');
+			if((hashLevel['PNDArea4']  <  z)&&(z <= hashLevel['PNDArea2'] ))	drawArea('BlockSet','2');
+			if((hashLevel['PNDArea2']  <  z)&&(z <= hashLevel['PNDArea0'] ))	drawArea('BlockSet','0');
+			if (hashLevel['PNDArea0']  <  z)									drawArea('BlockSet','m2');
+		}
+	}
+
+	function drawArea(target,level) {
+
+		// 必ずdrawAreabyZoom()から呼び出すこと!{clearAreaArray() 呼び出し後なので}
+		if(level!='m2') level = eval(level);
+		var info = area_info.get(target,level,'');
+
+		// 4辺距離表示
+		if(target!='MeshG')
+		{
+			document.getElementById(target + 'LenU').value = calcDistance((info.base_lat + info.height), info.base_lng, (info.base_lat + info.height), (info.base_lng + info.width));
+			document.getElementById(target + 'LenL').value = calcDistance(info.base_lat, info.base_lng, (info.base_lat + info.height), info.base_lng);
+			document.getElementById(target + 'LenR').value = calcDistance(info.base_lat, (info.base_lng + info.width), (info.base_lat + info.height), (info.base_lng + info.width));
+			document.getElementById(target + 'LenB').value = calcDistance(info.base_lat, info.base_lng, info.base_lat, (info.base_lng + info.width));
+		}
+
+		var aBase = new Array();
+		var wgs = Geotool.tky2wgs(info.base_lat, info.base_lng);
+
+		if(target == 'MeshG') {
+			aBase["lat"] = info.base_lat; aBase["lng"] = info.base_lng;
+		} else {
+			aBase["lat"] = wgs.lat; aBase["lng"] = wgs.lng;
+		}
+
+		var aLeng = new Array();
+		aLeng["height"] = info.height; aLeng["width"] = info.width;
+
+		// ボタン色変更 drawAreabyZoom(){clearTDColor() 呼び出し後
+		var aColor = { 'Mesh' : '#B0C4DE', 'Mapple' : '#90EE90', 'PND' : '#F08080' }
+		if(target != 'MeshG') {
+			document.getElementById('button' + target + level).style.backgroundColor = aColor[target];
+		}
+
+		// ターゲットエリア描画
+		var aColor = hashColor[target];
+		var aOpacity = 0.3;			// 透過率
+		var aWeight = 2;			// 太さ
+		if(target=='Mesh') aWeight = 6; if(target=='MeshG') aWeight = 3; if(target=='Mapple') aWeight = 4;
+		var aFillColor = aColor;
+		var aFillOpacity = 0.0;		// 透過率
+
+		for(i=-3; i < 4; i++) {
+			for(j=-3; j < 4; j++) {
+				var aLL = new Array();
+				aLL["low"] = aBase["lat"] + (aLeng["height"] * i);
+				aLL["left"] = aBase["lng"] + (aLeng["width"] * j);
+				var aUR = new Array();
+				aUR["upper"] = aBase["lat"] + (aLeng["height"] * (i+1));
+				aUR["right"] = aBase["lng"] + (aLeng["width"] * (j+1));
+
+				if((aUR["upper"]<-180)||(180<aUR["upper"]))
+					continue;
+
+				var aCenter = { "lat" : aLL["low"]+((aUR["upper"]-aLL["low"])/2), "lng" : aLL["left"]+((aUR["right"]-aLL["left"])/2) };
+				if( (! isJapan(aLL["low"], aLL["left"])) &&
+					(! isJapan(aCenter.lat, aCenter.lng)) &&
+					(! isJapan(aUR["upper"], aUR["right"])) )
+					continue;
+
+				var aCoords = [
+					new google.maps.LatLng(aLL["low"], aLL["left"]),
+					new google.maps.LatLng(aLL["low"], aUR["right"]),
+					new google.maps.LatLng(aUR["upper"], aUR["right"]),
+					new google.maps.LatLng(aUR["upper"], aLL["left"])
+				];
+
+				var LxArea = new google.maps.Polygon({
+					paths: aCoords,
+					strokeColor: aColor,
+					strokeOpacity: aOpacity,
+					strokeWeight: aWeight,
+					fillColor: aFillColor,
+					fillOpacity: aFillOpacity
+				});
+
+				LxArea.setMap(map);
+				AreaArray.push(LxArea);
+			}
+		}
+	}
+
+	// 辺距離ラベル
+	// http://www.mwsoft.jp/programming/googlemap/google_map_v3_custom_overlay.html
+	function DistLabelMarker(map, lat, lng, dist, level) {
+		this.lat_ = lat;
+		this.lng_ = lng;
+		this.dist_ = dist;
+		this.level_ = level;
+		this.lap_ = 0;
+		// 重なり防止
+		if (DistLabelArray) {
+			for (i in DistLabelArray) {
+				if( (Math.abs(DistLabelArray[i].lat_ - lat) < 0.01) &&
+					(Math.abs(DistLabelArray[i].lng_ - lng) < 0.01) ){
+					this.lap_++;
+				}
+			}
+		}
+		this.setMap(map);
+		DistLabelArray.push(this);
+	}
+	DistLabelMarker.prototype = new google.maps.OverlayView();
+	DistLabelMarker.prototype.draw = function() {
+		this.div_ = document.createElement( "div" );
+		this.div_.style.position = "absolute";
+		this.div_.style.fontSize = "120%";
+		this.div_.style.color = ColorArray[this.level_];
+		if(this.level_!=2) this.div_.style.backgroundColor = "#000000"; else this.div_.style.backgroundColor = "#ffff00";
+		this.div_.style.MozOpacity = "0.4";		// mozilla
+		this.div_.style.filter = 'alpha(opacity=' + (0.4 * 100) + ')';	// ie
+		this.div_.innerHTML = "" + this.dist_ + "m";
+		var panes = this.getPanes();
+		panes.overlayLayer.appendChild( this.div_ );
+		var point = this.getProjection().fromLatLngToDivPixel( new google.maps.LatLng( this.lat_, this.lng_ ) );
+
+		// 重なり防止
+		point.y = point.y + (this.lap_ * 25);
+
+		this.div_.style.left = point.x + 'px';
+		this.div_.style.top = point.y + 'px';
+	}
+	DistLabelMarker.prototype.onRemove = function() {
+		if (this.div_) {
+			this.div_.parentNode.removeChild(this.div_);
+			this.div_ = null;
+		}
+	}
+
+	function calcDistance(pos1_lat, pos1_lng, pos2_lat, pos2_lng) {
+		var from = new google.maps.LatLng(pos1_lat, pos1_lng);
+		var to = new google.maps.LatLng(pos2_lat, pos2_lng);
+		var distance = google.maps.geometry.spherical.computeDistanceBetween(from, to);
+		return distance;
+	}
+
+	function clearAreaArray() {
+		if (AreaArray) {
+			for (i in AreaArray) {
+				AreaArray[i].setMap(null);
+			}
+			AreaArray.length = 0;
+		}
+	}
+
+	function clearButtonColor() {
+		document.getElementById('buttonMesh1').style.backgroundColor='white';
+		document.getElementById('buttonMesh2').style.backgroundColor='white';
+		document.getElementById('buttonMesh3').style.backgroundColor='white';
+		document.getElementById('buttonMapple100').style.backgroundColor='white';
+		document.getElementById('buttonMapple20').style.backgroundColor='white';
+		document.getElementById('buttonMapple5').style.backgroundColor='white';
+		document.getElementById('buttonMapple25').style.backgroundColor='white';
+		document.getElementById('buttonMapple1').style.backgroundColor='white';
+		document.getElementById('buttonPND10').style.backgroundColor='white';
+		document.getElementById('buttonPND8').style.backgroundColor='white';
+		document.getElementById('buttonPND6').style.backgroundColor='white';
+		document.getElementById('buttonPND4').style.backgroundColor='white';
+		document.getElementById('buttonPND2').style.backgroundColor='white';
+		document.getElementById('buttonPND0').style.backgroundColor='white';
+		document.getElementById('buttonPNDm2').style.backgroundColor='white';
+	}
+
+	function drawLL10degree() {
+
+		if(! document.form1.LL10degree.checked) {
+			clearLL10degreeArray();
+			return;
+		}
+
+		var aColor = "#000000";
+		var aOpacity = 0.5;		// 透過率
+		var aWeight = 1;		// 太さ
+		for(i=0; i < 36; i++) {
+			var aL = -180 + (i * 10);
+			var aLines = [
+				new google.maps.LatLng(-89, aL),
+				new google.maps.LatLng( 89, aL)
+			];
+			var aPath = new google.maps.Polyline({
+				path: aLines,
+				strokeColor: aColor,
+				strokeOpacity: aOpacity,
+				strokeWeight: aWeight
+			});
+			aPath.setMap(map);
+			LL10degreeArray.push(aPath);
+		}
+		for(i=0; i < 18; i++) {
+			var aL = -90 + (i * 10);
+			var aLines = [
+				new google.maps.LatLng(aL, -180),
+				new google.maps.LatLng(aL,	0),
+				new google.maps.LatLng(aL,  179.99)
+			];
+			var aPath = new google.maps.Polyline({
+				path: aLines,
+				strokeColor: aColor,
+				strokeOpacity: aOpacity,
+				strokeWeight: aWeight
+			});
+			aPath.setMap(map);
+			LL10degreeArray.push(aPath);
+		}
+	}
+
+	function clearLL10degreeArray() {
+		if (LL10degreeArray) {
+			for (i in LL10degreeArray) {
+				LL10degreeArray[i].setMap(null);
+			}
+			LL10degreeArray.length = 0;
+		}
+	}
+
+	function clearCenterMark() {
+		cmLayer.setMap(null);
+	}
+
+	function showCenterMark() {
+		cmLayer.setMap(map);
+	}
+
+	function checkCenterMark() {
+		if(document.form1.CenterMark.checked)	showCenterMark();
+		else									clearCenterMark();
+	}
+
+	// go_ ============================================================================================================================================
+
+	function go_googlemaps() {
+		var strURL = "http://maps.google.co.jp/maps?ie=UTF8&ll=" + (map.getCenter()).lat() + "," + (map.getCenter()).lng() + "&z=" + map.getZoom();
+		window.open(strURL, "_blank");
+	}
+
+	function go_heremaps() {
+		var strURL = "http://here.com/" + (map.getCenter()).lat() + "," + (map.getCenter()).lng() + ",12,0,0,normal.day";
+		window.open(strURL, "_blank");
+	}
+
+	function go_YahooMap() {
+		var obj = document.form1.centerLL;
+		var str = obj.value.split(",");
+
+		strURL = "http://maps.loco.yahoo.co.jp/maps?lat=" + str[1] + "&lon=" + str[0] + "&layer=1&mode=map&type=scroll&z=18";
+		window.open(strURL, "_blank");
+	}
+
+	function go_bing() {
+		var strURL = "http://www.bing.com/maps/explore/#5872/style=r&lat=" + (map.getCenter()).lat() + "&lon=" + (map.getCenter()).lng() + "&z=17&pid=5874/5003/0.6793=ps::mode:Explore&o=&a=0&n=0";
+		window.open(strURL, "_blank");
+	}
+
+	function go_Biglobe() {
+		var obj = document.form1.centerLL;
+		var str = obj.value.split(",");
+
+		var strURL = "http://map.biglobe.ne.jp/index.php?lat=" + str[1] + "&lng=" + str[0] + "&zm=15&tp=0&sp=1";
+		window.open(strURL, "_blank");
+	}
+
+	function go_Cyberjapan() {
+		var obj = document.form1.centerLL;
+		var str = obj.value.split(",");
+
+		var strURL = "http://portal.cyberjapan.jp/site/mapuse/index.html?lat=" + str[1] + "&lon=" + str[0] + "&z=17&did=DJBMO";
+		window.open(strURL, "_blank");
+	}
+
+	function go_Chizumaru() {
+		var obj = document.form1.center1000j;
+		if(obj.value.slice(0,3) == "not")	return;
+		var str = obj.value.split("/");
+
+//		var strURL = "http://www.chizumaru.com/czm/main.aspx?X=" + eval(str[0]) / 1000 + "&Y=" + eval(str[1]) / 1000 + "&scl=1250&tab=&lk=&msz=&psz=&srscl=&count=map";
+		var strURL = "http://map.mapple.net/map/map.aspx?q=_cdn-x" + eval(str[0]) + "y" + eval(str[1]);
+		window.open(strURL, "_blank");
+	}
+
+	function go_ChizumaruBiz() {
+		var obj = document.form1.center1000j;
+		if(obj.value.slice(0,3) == "not")	return;
+		var str = obj.value.split("/");
+		//2012/01-not available
+		var strURL = "http://www.chizumaru.com/business/map/?x=" + eval(str[0]) / 1000 + "&y=" + eval(str[1]) / 1000 + "&scl=250";
+		window.open(strURL, "_blank");
+	}
+
+	function go_Z() {
+		var obj = document.form1.center1000j;
+		if(obj.value.slice(0,3) == "not")	return;
+		var str = obj.value.split("/");
+
+		var strURL = "http://www.its-mo.com/map/?lvl=15&lat=" + str[1] + "&lon=" + str[0];
+		window.open(strURL, "_blank");
+	}
+
+	function go_LivedoorMap() {
+		var obj = document.form1.centerDMSj;
+		if(obj.value.slice(0,3) == "not")	return;
+
+		var strURL = "http://map.livedoor.com/map/?ZM=10&MAP=" + obj.value;
+		window.open(strURL, "_blank");
+	}
+
+	function go_Mapfan() {
+		var obj = document.form1.centerDMSj;
+		if(obj.value.slice(0,3) == "not")	return;
+
+		strURL = "http://www.mapfan.com/m.cgi?MAP=" + obj.value + "&ZM=10";
+		window.open(strURL, "_blank");
+	}
+
+</script>
+</head>
+<body onload="initialize()">
+
+<table border="0" cellpadding=2 style="position:absolute; width:95%; height:95%">
+<tr valign="top">
+	<td width="700px">
+	<div id="map_canvas" style="width:100%; height:100%"></div>
+	</td>
+
+	<td width="350px">
+
+	<!-- **************************************************** -->
+	<form name="form1">
+	<table border="0">
+	<tr valign="top" height="15">
+		<td colspan="3">
+		<nobr>
+		<input type="checkbox" name="CenterMark" value="CenterMark" onclick="checkCenterMark();" checked />CenterMark
+		<input type="checkbox" name="LL10degree" value="LL10degree" onclick="drawLL10degree();" checked />10degree
+		　Google maps scale<input type=text size="5" name="GScale" id="GScale" value="" />
+		</nobr>
+	</td></tr>
+
+	<tr valign="top" height="1">
+		<td width="200px" valign="top" colspan="3" bgcolor="#bbbbbb"></td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td colspan="3">
+		<nobr>
+		<input type=text size="55" name="address" id="address" value="" onclick="this.select(0,this.value.length)" />
+		<input onclick="search_address();" type=button value="地図を検索" />
+		</nobr>
+	</td></tr>
+
+	<tr valign="top" height="15">
+		<td width="190px" valign="top" align="center" bgcolor="#bbbbbb">
+		 ※日本測地系 
+		</td>
+		<td width="100px" valign="top" align="center" bgcolor="#bbbbbb">
+		変換・移動
+		</td>
+		<td width="170px" valign="top" align="center" bgcolor="#bbbbbb">
+		 ※世界測地系 
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="centerLLj" id="centerLLj" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_centerLLj()" />
+		</nobr>
+		<td width="75px" valign="top" align="center">
+		<nobr>Degree</nobr>
+		</td>
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="centerLL" id="centerLL" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_centerLL()" />
+		</nobr>
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="center1000j" id="center1000j" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_center1000j()" />
+		</nobr>
+		</td>
+		<td width="75px" valign="top" align="center">
+		<nobr>1/1000秒</nobr>
+		</td>
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="center1000" id="center1000" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_center1000()" />
+		</nobr>
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="center1024j" id="center1024j" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_center1024j()" />
+		</nobr>
+		</td>
+		<td width="75px" valign="top" align="center">
+		<nobr>1/1024秒</nobr>
+		</td>
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="center1024" id="center1024" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_center1024()" />
+		</nobr>
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="center256j" id="center256j" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_center256j()" />
+		</nobr>
+		</td>
+		<td width="75px" valign="top" align="center">
+		<nobr>1/256秒</nobr>
+		</td>
+		<nobr>
+		<td width="170px" valign="top">
+		<input type=text size="27" name="center256" id="center256" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_center256()" />
+		</nobr>
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="center128j" id="center128j" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_center128j()" />
+		</nobr>
+		</td>
+		<td width="75px" valign="top" align="center">
+		<nobr>1/128秒</nobr>
+		</td>
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="center128" id="center128" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_center128()" />
+		</nobr>
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="centerLL8j" id="centerLL8j" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_centerLL8j()" />
+		</nobr>
+		</td>
+		<td width="75px" valign="top" align="center">
+		<nobr>1/8秒</nobr>
+		</td>
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="centerLL8" id="centerLL8" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_centerLL8()" />
+		</nobr>
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="centerDMSj" id="centerDMSj" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_centerDMSj()" />
+		</nobr>
+		</td>
+		<td width="75px" valign="top" align="center">
+		<nobr>DMS</nobr>
+		</td>
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="centerDMS" id="centerDMS" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_centerDMS()" />
+		</nobr>
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="170px" valign="top">
+		<nobr>
+		<input type=text size="27" name="centerMXYj" id="centerMXYj" value="" onclick="this.select(0,this.value.length)" />
+		<input type=button value="" onClick="move_centerMXYj()" />
+		</nobr>
+		</td>
+		<td width="75px" valign="top" align="center">
+		<nobr>MeshXY</nobr>
+		</td>
+		<td width="170px" valign="top">
+		-
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="170px" valign="top" align="right">
+		 <a href="javascript:go_Chizumaru()" title="Chizumaru"><img src="resource/mapple.png" /></a>
+		 <a href="javascript:go_Z()"><img src="resource/z.png" /></a>
+		 <a href="javascript:go_Mapfan()"><img src="resource/mapfan.png" /></a>
+		 <a href="javascript:go_LivedoorMap()"><img src="resource/ldtop_favicon.ico" /></a>
+		</td>
+		<td width="75px" valign="top" align="center">
+		<nobr>Link</nobr>
+		</td>
+		<td width="170px" valign="top">
+		 <a href="javascript:go_googlemaps()"><img src="resource/Google.jpg" /></a>
+		 <a href="javascript:go_YahooMap()"><img src="resource/yahoo.png" /></a>
+		 <a href="javascript:go_bing()"><img src="resource/bing.png" /></a>
+		 <a href="javascript:go_Biglobe()"><img src="resource/biglobe.ico" /></a>
+		 <a href="javascript:go_Cyberjapan()"><img src="resource/cyberjapan.gif" height=16 width=16/></a>
+		 <a href="javascript:go_heremaps()"><img src="resource/here.png" /></a>
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="100%" valign="top" colspan="3">
+		 
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="100%" valign="top" align="center" colspan="3" bgcolor="#bbbbbb">
+		 メッシュ　Mapple　PND　※日本測地系
+		</td>
+	</tr>
+
+	<tr valign="top" height="15">
+		<td width="200px" valign="top" colspan="3">
+
+		<table border="0" width="100%">
+		<tr valign="top" height="15">
+			<td width="100%" valign="top" align="center" colspan="3">
+				<nobr>
+				<input type="radio" name="MoveWhere" id="MoveLowleft" value="" />左下に移動　
+				<input type="radio" name="MoveWhere" id="MoveCenter" value="" checked />中心に移動　
+				<input type="radio" name="MoveWhere" id="MoveUpperright" value="" />右上に移動
+				</nobr>
+			</td>
+		</tr>
+		<tr valign="top" height="15">
+			<td width="33%" valign="top" bgcolor="#B0C4DE">
+				<nobr>
+				<input type="checkbox" name="MeshArea" value="MeshArea" onclick="drawAreabyZoom();" />MeshArea
+				</nobr>
+			</td>
+			<td width="33%" valign="top" bgcolor="#90EE90">
+				<nobr>
+				<input type="checkbox" name="MappleArea" value="MappleArea" onclick="drawAreabyZoom();" />MappleArea
+				</nobr>
+			</td>
+			<td width="33%" valign="top" bgcolor="#F08080">
+				<nobr>
+				<input type="checkbox" name="PNDArea" value="PNDArea" onclick="drawAreabyZoom();" />PNDArea
+				</nobr>
+			</td>
+		</tr>
+		<tr valign="top" height="15">
+			<td width="33%" valign="top" align="center">
+				<nobr>
+				<input type=button value="１次" onClick="move_centerMeshArea1()" class="buttonMesh" id="buttonMesh1" />
+				<input type=text size="12" name="MeshArea1" id="MeshArea1" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="２次" onClick="move_centerMeshArea2()" class="buttonMesh" id="buttonMesh2" />
+				<input type=text size="12" name="MeshArea2" id="MeshArea2" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="３次" onClick="move_centerMeshArea3()" class="buttonMesh" id="buttonMesh3" />
+				<input type=text size="12" name="MeshArea3" id="MeshArea3" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<nobr>
+				<input type="checkbox" name="MeshAreaB" value="MeshAreaB" onclick="drawAreabyZoom();" />2次メッシュ常時
+				</nobr>
+				<br />
+
+				<br />
+
+				上辺：<input type=text size="12" name="MeshLenU" id="MeshLenU" value="" onclick="this.select(0,this.value.length)" /><br />
+				左辺：<input type=text size="12" name="MeshLenL" id="MeshLenL" value="" onclick="this.select(0,this.value.length)" /><br />
+				右辺：<input type=text size="12" name="MeshLenR" id="MeshLenR" value="" onclick="this.select(0,this.value.length)" /><br />
+				下辺：<input type=text size="12" name="MeshLenB" id="MeshLenB" value="" onclick="this.select(0,this.value.length)" /><br />
+
+				<nobr>
+				<hr color="#ff00ff" width="60%"/>
+				</nobr>
+				<nobr>
+				<input type="checkbox" name="MeshAreaG" value="MeshAreaG" onclick="drawAreabyZoom();" />世界測地系
+				</nobr>
+				<nobr>
+				<input type=text size="12" name="MeshAreaG1" id="MeshAreaG1" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=text size="12" name="MeshAreaG2" id="MeshAreaG2" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=text size="12" name="MeshAreaG3" id="MeshAreaG3" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<hr color="#ff00ff" width="60%"/>
+				</nobr>
+
+			</td>
+			<td width="33%" valign="top" align="center">
+				<nobr>
+				<input type=button value="100万" onClick="move_centerMappleArea100()" class="buttonMapple" id="buttonMapple100" />
+				<input type=text size="12" name="MappleArea100" id="MappleArea100" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="20万" onClick="move_centerMappleArea20()" class="buttonMapple" id="buttonMapple20" />
+				<input type=text size="12" name="MappleArea20" id="MappleArea20" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="5万" onClick="move_centerMappleArea5()" class="buttonMapple" id="buttonMapple5" />
+				<input type=text size="12" name="MappleArea5" id="MappleArea5" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="2.5万" onClick="move_centerMappleArea25()" class="buttonMapple" id="buttonMapple25" />
+				<input type=text size="12" name="MappleArea25" id="MappleArea25" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="1万" onClick="move_centerMappleArea1()" class="buttonMapple" id="buttonMapple1" />
+				<input type=text size="12" name="MappleArea1" id="MappleArea1" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+
+				<br />
+
+				上辺：<input type=text size="12" name="MappleLenU" id="MappleLenU" value="" onclick="this.select(0,this.value.length)" /><br />
+				左辺：<input type=text size="12" name="MappleLenL" id="MappleLenL" value="" onclick="this.select(0,this.value.length)" /><br />
+				右辺：<input type=text size="12" name="MappleLenR" id="MappleLenR" value="" onclick="this.select(0,this.value.length)" /><br />
+				下辺：<input type=text size="12" name="MappleLenB" id="MappleLenB" value="" onclick="this.select(0,this.value.length)" /><br />
+
+				<nobr>
+				<hr color="#00ffff" width="60%"/>
+				</nobr>
+				<nobr>
+				<input type="checkbox" name="BlockSet" value="BlockSet" onclick="drawAreabyZoom();" />
+				<!-- input type="checkbox" name="BlockSet" value="BlockSet"" disabled / -->
+				BlockSet:<input type=text size="8" name="BlockSetNo" id="BlockSetNo" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<nobr>
+				[BSet][Block]Pcl,分割
+				</nobr>
+				<nobr>
+				L2:<input type=text size="12" name="BlockParcelL2No" id="BlockParcelL2No" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<nobr>
+				L1:<input type=text size="12" name="BlockParcelL1No" id="BlockParcelL1No" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<nobr>
+				L0:<input type=text size="12" name="BlockParcelL0No" id="BlockParcelL0No" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<nobr>
+				Lf:<input type=text size="15" name="BlockParcelLfNo" id="BlockParcelLfNo" value="" onclick="this.select(0,this.value.length)" />
+				</nobr>
+				<br />
+				<hr color="#00ffff" width="60%"/>
+
+			</td>
+			<td width="33%" valign="top" align="center">
+				<nobr>
+				<input type=button value="レベル10" onClick="move_centerPNDArea10()" class="buttonPND" id="buttonPND10" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="レベル8" onClick="move_centerPNDArea8()" class="buttonPND" id="buttonPND8" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="レベル6" onClick="move_centerPNDArea6()" class="buttonPND" id="buttonPND6" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="レベル4" onClick="move_centerPNDArea4()" class="buttonPND" id="buttonPND4" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="レベル2" onClick="move_centerPNDArea2()" class="buttonPND" id="buttonPND2" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="レベル0" onClick="move_centerPNDArea0()" class="buttonPND" id="buttonPND0" />
+				</nobr>
+				<br />
+				<nobr>
+				<input type=button value="レベル-2" onClick="move_centerPNDAream2()" class="buttonPND" id="buttonPNDm2" />
+				</nobr>
+				<br />
+
+				<br />
+
+				上辺：<input type=text size="12" name="PNDLenU" id="PNDLenU" value="" onclick="this.select(0,this.value.length)" /><br />
+				左辺：<input type=text size="12" name="PNDLenL" id="PNDLenL" value="" onclick="this.select(0,this.value.length)" /><br />
+				右辺：<input type=text size="12" name="PNDLenR" id="PNDLenR" value="" onclick="this.select(0,this.value.length)" /><br />
+				下辺：<input type=text size="12" name="PNDLenB" id="PNDLenB" value="" onclick="this.select(0,this.value.length)" /><br />
+
+				<br />
+			</td>
+		</tr>
+		</table>
+
+		</td>
+	</tr>
+
+
+	<!-- **************************************************** -- >
+	<tr valign="top" height="15">
+		<td width="100%" valign="top" colspan="3" bgcolor="#bbbbbb">
+		</td>
+	</tr>
+	<tr valign="top" height="15">
+		<td width="100px" valign="top">
+		デバッグ</td>
+		<td width="200px" valign="top" colspan="2">
+		<input type=text size="35" name="debug" id="debug" value="" />
+		</td>
+	</tr>
+	</table>
+	</form>
+	<!-- **************************************************** -->
+
+	</td>
+</tr>
+</table>
+
+</body>
+</html>
