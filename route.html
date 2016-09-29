@@ -15,6 +15,12 @@
 	#route_log a		 { color: #cccccc; }
 	#route_log a:hover	 { color: #ff0000; }
 	#datetimepicker		 { left: 210px; float: left; z-index:1; position: absolute; }
+	#gate_log    { width:400px; height: 100%; right: 0;  z-index:1; position:fixed; font-size: 80%;
+				   background-color: rgba( 0, 0, 0, 0.55 ); color: #cccccc;
+				   overflow:auto;
+				 }
+	#gate_log  a		 { color: #cccccc; }
+	#gate_log  a:hover	 { color: #ff0000; }
 </style>
 <link rel="stylesheet" href="https://dl.dropbox.com/u/11708403/jquery.datetimepicker.css" />
 
@@ -112,7 +118,21 @@
 		});
 	}
 
+	// gate_table ==================================================================================================================================
+	var gate_table = [];
+	function add_gate_table(str)
+	{
+		if( gate_table.indexOf(str) >= 0)
+			return false;	// 存在するので格納しない
+		else
+		{
+			gate_table.push(str);
+			return true;	// 存在しないので格納する
+		}
+	}
+
 	// calcRoute ==================================================================================================================================
+
 	function calcRoute() {
 		var request = {
 			origin: "東京",
@@ -165,8 +185,9 @@
 				var lat = result.routes[0].legs[0].steps[i].lat_lngs[0].lat();
 				var str_lng = floatFormat(lng, 4);
 				var str_lat = floatFormat(lat, 4);
-				var instructions = result.routes[0].legs[0].steps[i].instructions;	// 探索結果案内ログ(ここに文字列「料金所」が含まれるか否か)
-				if ( -1 != instructions.indexOf('料金所'))
+				var instructions = result.routes[0].legs[0].steps[i].instructions;
+				// 探索結果案内ログ(ここに文字列「料金所」かつ「有料区間」が含まれるか否か)
+				if (( -1 != instructions.indexOf('料金所')) && ( -1 != instructions.indexOf('有料区間')))
 				{
 					route_log.innerHTML += "<a href=\"#\" onMouseOver=\"javascript:reflesh_marker("+lat+","+lng+")\">["+i+"] "+str_lng+","+str_lat+"</a><br />";
 					route_log.innerHTML += startDateTime.add(duration, 'seconds').format('YYYY/MM/DD(ddd) HH:mm')+" 通過<br />";
@@ -186,6 +207,13 @@
 						map: map
 					});
 					marker_list.push(marker);
+
+					// gate_log 料金所位置名称DB作成用
+					{
+						var gate_str = lat+","+lng+","+str_result[1];
+						if(add_gate_table(gate_str))
+							gate_log.innerHTML += "<a href=\"#\" onMouseOver=\"javascript:reflesh_marker("+lat+","+lng+")\">"+gate_str+"</a><br />";
+					}
 				}
 			}
 		}
@@ -254,6 +282,7 @@
 
 <div id="map_canvas"></div>
 <div id="route_log"></div>
+<div id="gate_log"></div>
 
 <input id="datetimepicker" type="text" onChange="javascript:datetime_change()">
 
