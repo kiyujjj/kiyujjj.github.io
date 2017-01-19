@@ -1,0 +1,24 @@
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  position: relative;
+  margin: 0; padding:0;
+  font:13px/1.231 sans-serif;*font-size:small;*font:x-small;
+  color: #3C3C3C;
+  -webkit-text-size-adjust:none;
+}
+
+h1, h2, h3, p {margin: 0;}
+a {text-decoration: none;}
+a img {border-style: none;}
+
+#wrapper {
+  position: relative;
+  height: 100%;
+}
+#map_canvas {
+  height: 100%;
+}
