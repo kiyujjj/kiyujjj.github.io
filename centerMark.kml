@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="https://earth.google.com/kml/2.2">
+<Document>
+<description>
+<![CDATA[<p>Center Mark</p><p><a href="https://hippo.matsup.mydns.jp/motorcycle/">Powered by AM</a></p>]]>
+</description>
+<Folder>
+	<name>Screen Overlays</name>
+	<visibility>0</visibility>
+	<ScreenOverlay>
+		<name>Simple crosshairs</name>
+		<visibility>0</visibility>
+		<Icon>
+		<href>https://dl.dropbox.com/u/11708403/center_mark.png</href>
+		</Icon>
+		<overlayXY x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
+		<screenXY x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
+		<rotationXY x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
+		<size x="0" y="0" xunits="pixels" yunits="pixels"/>
+	</ScreenOverlay>
+</Folder>
+</Document>
+</kml>
