@@ -29,7 +29,7 @@
 	var hashColor = { 'Mesh': '#0000ff', 'MeshG': '#ff00ff', 'Mapple': '#00ff00', 'PND': '#ff0000', 'BlockSet': '#00ffff' };
 
 	// センターマーク http://matsup.blogspot.com/2011/03/gpsgoogle-maps-api-v3_30.html
-//	var cmLayer = new google.maps.KmlLayer('https://dl.dropbox.com/u/11708403/centerMark.kml', {preserveViewport:true});
+	var cmLayer = new google.maps.KmlLayer('https://kiyujjj.github.io/centerMark.kml', {preserveViewport:true});
 
 	// 収容範囲
 	var hashKWArea = { 'L':439200000 , 'B':52800000 , 'R':554400000 , 'T':206400000 };
@@ -1396,11 +1396,11 @@
 	}
 
 	function clearCenterMark() {
-//		cmLayer.setMap(null);
+		cmLayer.setMap(null);
 	}
 
 	function showCenterMark() {
-//		cmLayer.setMap(map);
+		cmLayer.setMap(map);
 	}
 
 	function checkCenterMark() {
@@ -1511,7 +1511,7 @@
 	<tr valign="top" height="15">
 		<td colspan="3">
 		<nobr>
-		<!-- input type="checkbox" name="CenterMark" value="CenterMark" onclick="checkCenterMark();" checked />CenterMark -->
+		<input type="checkbox" name="CenterMark" value="CenterMark" onclick="checkCenterMark();" checked />CenterMark
 		<input type="checkbox" name="LL10degree" value="LL10degree" onclick="drawLL10degree();" checked />10degree
 		　Google maps scale<input type=text size="5" name="GScale" id="GScale" value="" />
 		</nobr>
