@@ -3,6 +3,15 @@
 <title>mesh on gmap Tokyo Datum for FireFox4</title>
 <link rel="shortcut icon" href="https://dl.dropbox.com/u/11708403/favicon.ico">
 <style type="text/css">
+body {
+   margin: 0;
+   padding: 0;
+}
+.centerLL {
+	position:absolute;
+	top:100px;
+	left:100px;
+}
 </style>
 <meta http-equiv="Content-Type" content="text/html; charset =UTF-8">
 <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
@@ -110,7 +119,7 @@
 </script>
 </head>
 <body onload="initialize()">
-	<input type=text size="27" name="centerLL" id="centerLL" value="" onclick="this.select(0,this.value.length)" />
+	<input type=text size="27" class="centerLL" id="centerLL" value="" />
 	<div id="map_canvas" style="width:100%; height:100%"></div>
 </body>
 </html>
