@@ -16,6 +16,9 @@ body {
 	left:10px;
 	z-index: 2;
 }
+#btn-copy {
+	z-index: 3;
+}
 </style>
 <meta http-equiv="Content-Type" content="text/html; charset =UTF-8">
 <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
@@ -117,13 +120,27 @@ body {
 		// 中心座標取得
 		var lat = get_lat();
 		var lng = get_lng();
-		$("#centerLL").val(round__(lng,4) + "," + round__(lat,4));	// wgs84, degree
+		$("#centerLL").val(round__(lat,6) + ", " + round__(lng,6));	// wgs84, degree
+		$("#btn-copy").innerHtml("Copy");
 	}
 
+	function copyToClipboard() {
+		// コピー対象をJavaScript上で変数として定義する
+		var copyTarget = document.getElementById("centerLL");
+
+		// コピー対象のテキストを選択する
+		copyTarget.select();
+
+		// 選択しているテキストをクリップボードにコピーする
+		document.execCommand("Copy");
+
+		// コピーをお知らせする
+		$("#btn-copy").innerHtml("Copied!");
+	}
 </script>
 </head>
 <body onload="initialize()">
-	<input type=text size="27" id="centerLL" value="" />
+	<nobr><input type=text size="27" id="centerLL" value="" /><button id="btn-copy" onclick="copyToClipboard()">Copy</button></nobr>
 	<div id="map_canvas" style="width:100%; height:100%"></div>
 </body>
 </html>
