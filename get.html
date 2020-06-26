@@ -19,7 +19,7 @@ body {
 #btn-copy {
 	position:absolute;
 	top:10px;
-	left:100px;
+	left:200px;
 	z-index: 3;
 }
 </style>
@@ -40,7 +40,7 @@ body {
 	function initialize() {
 		geocoder = new google.maps.Geocoder();
 
-		var latlng = new google.maps.LatLng(36.3700,136.7100);
+		var latlng = new google.maps.LatLng(36.3701,136.7101);
 		var myOptions = {
 			zoom: 5,
 			center: latlng,
@@ -124,7 +124,7 @@ body {
 		var lat = get_lat();
 		var lng = get_lng();
 		$("#centerLL").val(round__(lat,6) + ", " + round__(lng,6));	// wgs84, degree
-		$("#btn-copy").innerHtml("Copy");
+		$("#btn-copy").html("Copy");
 	}
 
 	function copyToClipboard() {
@@ -138,12 +138,13 @@ body {
 		document.execCommand("Copy");
 
 		// コピーをお知らせする
-		$("#btn-copy").innerHtml("Copied!");
+		$("#btn-copy").html("Copied!");
 	}
 </script>
 </head>
 <body onload="initialize()">
-	<nobr><input type=text size="18" id="centerLL" value="" /><button id="btn-copy" onclick="copyToClipboard()">Copy</button></nobr>
+	<input type=text size="18" id="centerLL" value="" />
+	<button id="btn-copy" onclick="copyToClipboard()">Copy</button>
 	<div id="map_canvas" style="width:100%; height:100%"></div>
 </body>
 </html>
