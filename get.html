@@ -3,10 +3,6 @@
 <title>mesh on gmap Tokyo Datum for FireFox4</title>
 <link rel="shortcut icon" href="https://dl.dropbox.com/u/11708403/favicon.ico">
 <style type="text/css">
-	td {font-size: 80%}
-	.buttonMesh   {width:35px;}
-	.buttonMapple {width:50px;}
-	.buttonPND    {width:90px;}
 </style>
 <meta http-equiv="Content-Type" content="text/html; charset =UTF-8">
 <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
@@ -14,28 +10,11 @@
 <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
 <script type="text/javascript" src="geotool.js"></script>
 <script type="text/javascript">
-
-	// trim:[string.replace(/^\s+|\s+$/g, "");](http://d.hatena.ne.jp/fumokmm/20060714/1152856728)
-
 	var map;
 	var geocoder;
 
-	var LL10degreeArray = [];	// 世界測地系　10度ごとの経緯線
-
-	var AreaArray = [];			// エリア矩形
-
-	var hashLevel = { 	'MeshArea1': 8, 'MeshArea2': 12, 'MeshArea3': 17, 'MeshAreaG1': 8, 'MeshAreaG2': 12, 'MeshAreaG3': 17, 'MappleArea100': 6, 'MappleArea20': 8, 'MappleArea5': 10, 'MappleArea25': 12, 'MappleArea1': 14, 'PNDArea10': 4, 'PNDArea8': 6, 'PNDArea6': 8, 'PNDArea4': 10, 'PNDArea2': 12, 'PNDArea0': 14, 'PNDAream2': 16 };
-
-	var hashColor = { 'Mesh': '#0000ff', 'MeshG': '#ff00ff', 'Mapple': '#00ff00', 'PND': '#ff0000', 'BlockSet': '#00ffff' };
-
 	// センターマーク http://matsup.blogspot.com/2011/03/gpsgoogle-maps-api-v3_30.html
 	var cmLayer = new google.maps.KmlLayer('https://kiyujjj.github.io/centerMark.kml', {preserveViewport:true});
-
-	// 収容範囲
-	var hashKWArea = { 'L':439200000 , 'B':52800000 , 'R':554400000 , 'T':206400000 };
-	var hashKWBlockSet = { 'V':8, 'H':4 };						// 緯度方向分割数、経度方向分割数
-	var hashKWBlock = { 'L2':4, 'L1':8, 'L0':16, 'Lf':16 };		// ブロック分割数(一辺)
-	var hashKWParcel = { 'L2':4, 'L1':8, 'L0':16, 'Lf':32 };	// パーセル分割数(一辺)
 
 	// init_ ============================================================================================================================================
 
@@ -75,7 +54,7 @@
 			f_dragend();
 		});
 
-		checkCenterMark();	// センターマーク
+		cmLayer.setMap(map);	// センターマーク
 		f_zoom_changed();
 		disp_latlng();		// 座標表示
 	}
@@ -95,8 +74,6 @@
 	}
 
 	function f_zoom_changed() {
-		// スケール取得＆表示
-		document.form1.GScale.value = map.getZoom();
 		f_dragend();
 	}
 
@@ -130,15 +107,10 @@
 		document.form1.centerLL.value = round__(lng,4) + "," + round__(lat,4);	// degree
 	}
 
-	function showCenterMark() {
-		cmLayer.setMap(map);
-	}
-
 </script>
 </head>
 <body onload="initialize()">
-
-<div id="map_canvas" style="width:100%; height:100%"></div>
-<input type=text size="27" name="centerLL" id="centerLL" value="" onclick="this.select(0,this.value.length)" />
+	<input type=text size="27" name="centerLL" id="centerLL" value="" onclick="this.select(0,this.value.length)" />
+	<div id="map_canvas" style="width:100%; height:100%"></div>
 </body>
 </html>
