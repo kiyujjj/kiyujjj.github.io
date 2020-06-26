@@ -17,6 +17,9 @@ body {
 	z-index: 2;
 }
 #btn-copy {
+	position:absolute;
+	top:10px;
+	left:100px;
 	z-index: 3;
 }
 </style>
@@ -37,7 +40,7 @@ body {
 	function initialize() {
 		geocoder = new google.maps.Geocoder();
 
-		var latlng = new google.maps.LatLng(36.37,136.71);
+		var latlng = new google.maps.LatLng(36.3700,136.7100);
 		var myOptions = {
 			zoom: 5,
 			center: latlng,
@@ -140,7 +143,7 @@ body {
 </script>
 </head>
 <body onload="initialize()">
-	<nobr><input type=text size="27" id="centerLL" value="" /><button id="btn-copy" onclick="copyToClipboard()">Copy</button></nobr>
+	<nobr><input type=text size="18" id="centerLL" value="" /><button id="btn-copy" onclick="copyToClipboard()">Copy</button></nobr>
 	<div id="map_canvas" style="width:100%; height:100%"></div>
 </body>
 </html>
