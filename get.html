@@ -117,7 +117,7 @@ body {
 		// 中心座標取得
 		var lat = get_lat();
 		var lng = get_lng();
-		$("#centerLL").value = round__(lng,4) + "," + round__(lat,4);	// degree
+		$("#centerLL").val(round__(lng,4) + "," + round__(lat,4));	// wgs84, degree
 	}
 
 </script>
