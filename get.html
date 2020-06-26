@@ -7,10 +7,14 @@ body {
    margin: 0;
    padding: 0;
 }
-.centerLL {
+#map_canvas {
+	z-index: 1;
+}
+#centerLL {
 	position:absolute;
-	top:100px;
-	left:100px;
+	top:10px;
+	left:10px;
+	z-index: 2;
 }
 </style>
 <meta http-equiv="Content-Type" content="text/html; charset =UTF-8">
@@ -119,7 +123,7 @@ body {
 </script>
 </head>
 <body onload="initialize()">
-	<input type=text size="27" class="centerLL" id="centerLL" value="" />
+	<input type=text size="27" id="centerLL" value="" />
 	<div id="map_canvas" style="width:100%; height:100%"></div>
 </body>
 </html>
